@@ -1,0 +1,547 @@
+
+import streamlit as st
+import pandas as pd
+import numpy as np
+import plotly.express as px
+import plotly.graph_objects as go
+from sklearn.impute import SimpleImputer
+from sklearn.linear_model import LinearRegression
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.preprocessing import OrdinalEncoder
+from sklearn.model_selection import train_test_split
+from datetime import datetime, timedelta
+from dateutil.relativedelta import relativedelta
+
+st.set_page_config(layout="wide", page_title="AI Automated Dashboard Maker", initial_sidebar_state="expanded")
+
+
+# ---------------------------
+# Utility helpers
+# ---------------------------
+@st.cache_data
+def read_csv(uploaded_file):
+    try:
+        df = pd.read_csv(uploaded_file)
+    except Exception:
+        uploaded_file.seek(0)
+        df = pd.read_csv(uploaded_file, encoding='latin1', engine='python')
+    return df
+
+def detect_date_column(df):
+    # heuristics: look for 'date' in column name or dtype datetime or parseable
+    for col in df.columns:
+        if 'date' in col.lower():
+            return col
+    # fallback: find first column that pandas can parse to datetime for >50% rows
+    for col in df.columns:
+        try:
+            parsed = pd.to_datetime(df[col], errors='coerce')
+            non_null_ratio = parsed.notnull().mean()
+            if non_null_ratio > 0.5:
+                return col
+        except Exception:
+            continue
+    return None
+
+def identify_columns(df, date_col=None):
+    numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
+    categorical_cols = df.select_dtypes(include=['object', 'category']).columns.tolist()
+    if date_col:
+        if date_col in numeric_cols:
+            numeric_cols.remove(date_col)
+        if date_col in categorical_cols:
+            categorical_cols.remove(date_col)
+    return numeric_cols, categorical_cols
+
+def safe_datetime_conversion(df, date_col):
+    try:
+        df[date_col] = pd.to_datetime(df[date_col], errors='coerce')
+    except Exception:
+        df[date_col] = pd.to_datetime(df[date_col].astype(str), errors='coerce')
+    return df
+
+def impute_numeric(df, numeric_cols):
+    if not numeric_cols:
+        return df
+    imputer = SimpleImputer(strategy='median')
+    df[numeric_cols] = imputer.fit_transform(df[numeric_cols])
+    return df
+
+def fmt_currency(x):
+    try:
+        return f"{x:,.2f}"
+    except Exception:
+        return x
+
+def top_bottom(df, by_col, value_col, top=True, n=5):
+    if top:
+        res = df.groupby(by_col)[value_col].sum().sort_values(ascending=False).head(n).reset_index()
+    else:
+        res = df.groupby(by_col)[value_col].sum().sort_values(ascending=True).head(n).reset_index()
+    return res
+
+def aggregate_time(df, date_col, value_col, freq):
+    if freq == 'Daily':
+        g = df.set_index(date_col).resample('D')[value_col].sum().reset_index()
+    elif freq == 'Weekly':
+        g = df.set_index(date_col).resample('W-MON')[value_col].sum().reset_index()
+    elif freq == 'Monthly':
+        g = df.set_index(date_col).resample('M')[value_col].sum().reset_index()
+    elif freq == 'Yearly':
+        g = df.set_index(date_col).resample('Y')[value_col].sum().reset_index()
+    else:
+        g = df[[date_col, value_col]]
+    return g
+
+st.title("AI-Powered Automated Dashboard Maker")
+st.markdown("Upload a cleaned CSV file with sales data — the app will auto-detect columns and generate insights.")
+
+uploaded_file = st.sidebar.file_uploader("Upload CSV", type=['csv'])
+sample_btn = st.sidebar.button("Load sample dataset")
+
+if sample_btn:
+    # create a simple synthetic dataset for demo if user wants sample
+    rng = pd.date_range(end=pd.Timestamp.today(), periods=365)
+    sample = pd.DataFrame({
+        "OrderDate": np.random.choice(rng, size=1000),
+        "OrderID": np.arange(1000),
+        "Product": np.random.choice(['A','B','C','D','E','F'], size=1000),
+        "Category": np.random.choice(['Cat1','Cat2','Cat3'], size=1000),
+        "Sales": np.round(np.random.gamma(5, 50, size=1000),2),
+        "Profit": np.round(np.random.normal(20, 15, size=1000),2),
+        "Discount": np.round(np.random.choice([0,0.05,0.1,0.2], size=1000),2),
+        "CustomerID": np.random.choice([f"C{i:03d}" for i in range(1,201)], size=1000),
+        "Salesperson": np.random.choice(['S1','S2','S3','S4'], size=1000),
+        "Region": np.random.choice(['North','South','West','East'], size=1000),
+        "City": np.random.choice(['CityA','CityB','CityC','CityD'], size=1000),
+    })
+    uploaded_df = sample
+else:
+    uploaded_df = None
+
+if uploaded_file is not None:
+    df = read_csv(uploaded_file)
+elif uploaded_df is not None:
+    df = uploaded_df.copy()
+else:
+    st.info("Please upload a CSV file to begin or click 'Load sample dataset'.")
+    st.stop()
+
+
+orig_cols = df.columns.tolist()
+st.sidebar.markdown(f"**Detected columns ({len(orig_cols)})**")
+for c in orig_cols:
+    st.sidebar.text(c)
+
+detected_date_col = detect_date_column(df)
+if detected_date_col:
+    df = safe_datetime_conversion(df, detected_date_col)
+else:
+    # allow user to pick
+    st.sidebar.markdown("No date column confidently detected.")
+    user_pick_date = st.sidebar.selectbox("If you have a date column, choose it here:", options=[None]+orig_cols, index=0)
+    if user_pick_date:
+        detected_date_col = user_pick_date
+        df = safe_datetime_conversion(df, detected_date_col)
+
+numeric_cols, categorical_cols = identify_columns(df, date_col=detected_date_col)
+df = impute_numeric(df, numeric_cols)
+
+# expose column name mapping UI for common columns
+st.sidebar.markdown("---")
+st.sidebar.header("Column mapping (optional)")
+sales_col = st.sidebar.selectbox("Choose Sales column (if present)", options=[None]+numeric_cols, index=0)
+profit_col = st.sidebar.selectbox("Choose Profit column (if present)", options=[None]+numeric_cols, index=0)
+discount_col = st.sidebar.selectbox("Choose Discount column (if present)", options=[None]+numeric_cols, index=0)
+customer_col = st.sidebar.selectbox("Customer column (if present)", options=[None]+categorical_cols, index=0)
+product_col = st.sidebar.selectbox("Product column (if present)", options=[None]+categorical_cols, index=0)
+category_col = st.sidebar.selectbox("Category column (if present)", options=[None]+categorical_cols, index=0)
+salesperson_col = st.sidebar.selectbox("Salesperson column (if present)", options=[None]+categorical_cols, index=0)
+region_col = st.sidebar.selectbox("Region column (if present)", options=[None]+categorical_cols, index=0)
+city_col = st.sidebar.selectbox("City column (if present)", options=[None]+categorical_cols, index=0)
+
+# fallback heuristics: if user didn't pick, try to infer by name keywords
+def infer_by_names(df, candidates, keywords):
+    for col in candidates:
+        low = col.lower()
+        if any(k in low for k in keywords):
+            return col
+    return None
+
+if not sales_col:
+    sales_col = infer_by_names(df, numeric_cols, ['sales','amount','revenue','total'])
+if not profit_col:
+    profit_col = infer_by_names(df, numeric_cols, ['profit','gross_profit','margin'])
+if not discount_col:
+    discount_col = infer_by_names(df, numeric_cols, ['discount'])
+if not customer_col:
+    customer_col = infer_by_names(df, categorical_cols, ['customer','client'])
+if not product_col:
+    product_col = infer_by_names(df, categorical_cols, ['product','item','sku'])
+if not category_col:
+    category_col = infer_by_names(df, categorical_cols, ['category','cat','segment'])
+if not salesperson_col:
+    salesperson_col = infer_by_names(df, categorical_cols, ['salesperson','seller','rep','agent'])
+if not region_col:
+    region_col = infer_by_names(df, categorical_cols, ['region','state','zone'])
+if not city_col:
+    city_col = infer_by_names(df, categorical_cols, ['city','town'])
+
+# ensure date col is set
+date_col = detected_date_col
+
+st.sidebar.markdown("---")
+st.sidebar.header("Filters")
+
+if date_col:
+    min_date = df[date_col].min()
+    max_date = df[date_col].max()
+    date_range = st.sidebar.date_input("Date range", value=(min_date.date() if pd.notnull(min_date) else None, max_date.date() if pd.notnull(max_date) else None))
+    # convert selections to datetimes
+    try:
+        start_date = pd.to_datetime(date_range[0])
+        end_date = pd.to_datetime(date_range[1])
+    except Exception:
+        start_date = min_date
+        end_date = max_date
+else:
+    start_date = None
+    end_date = None
+
+def apply_filters(df):
+    d = df.copy()
+    if date_col and start_date is not None and end_date is not None:
+        if pd.api.types.is_datetime64_any_dtype(d[date_col]):
+            d = d[(d[date_col] >= pd.to_datetime(start_date)) & (d[date_col] <= pd.to_datetime(end_date))]
+    # region filter
+    if region_col:
+        regions = ['All'] + sorted(d[region_col].dropna().unique().tolist())
+        sel_regions = st.sidebar.multiselect("Region", options=regions, default=['All'])
+        if sel_regions and 'All' not in sel_regions:
+            d = d[d[region_col].isin(sel_regions)]
+    # city filter
+    if city_col:
+        cities = ['All'] + sorted(d[city_col].dropna().unique().tolist())
+        sel_cities = st.sidebar.multiselect("City", options=cities, default=['All'])
+        if sel_cities and 'All' not in sel_cities:
+            d = d[d[city_col].isin(sel_cities)]
+    # product filter
+    if product_col:
+        prods = ['All'] + sorted(d[product_col].dropna().unique().tolist())
+        sel_prods = st.sidebar.multiselect("Product", options=prods, default=['All'])
+        if sel_prods and 'All' not in sel_prods:
+            d = d[d[product_col].isin(sel_prods)]
+    # salesperson filter
+    if salesperson_col:
+        sps = ['All'] + sorted(d[salesperson_col].dropna().unique().tolist())
+        sel_sps = st.sidebar.multiselect("Salesperson", options=sps, default=['All'])
+        if sel_sps and 'All' not in sel_sps:
+            d = d[d[salesperson_col].isin(sel_sps)]
+    # category filter
+    if category_col:
+        cats = ['All'] + sorted(d[category_col].dropna().unique().tolist())
+        sel_cats = st.sidebar.multiselect("Category", options=cats, default=['All'])
+        if sel_cats and 'All' not in sel_cats:
+            d = d[d[category_col].isin(sel_cats)]
+    return d
+
+df_filtered = apply_filters(df)
+
+# show small preview and data quality
+with st.expander("Data preview & quality"):
+    st.dataframe(df_filtered.head(10), use_container_width=True)
+    missing = df_filtered.isna().sum()
+    st.write("Missing values per column (after imputation of numeric):")
+    st.table(missing[missing>0].sort_values(ascending=False))
+
+st.header("Key Performance Indicators (Auto-generated)")
+
+kpi_cols = []
+if sales_col:
+    total_sales = df_filtered[sales_col].sum()
+    avg_sales = df_filtered[sales_col].mean()
+    kpi_cols.append(("Total Sales", fmt_currency(total_sales)))
+    kpi_cols.append(("Average Sales", fmt_currency(avg_sales)))
+if profit_col:
+    total_profit = df_filtered[profit_col].sum()
+    avg_profit = df_filtered[profit_col].mean()
+    kpi_cols.append(("Total Profit", fmt_currency(total_profit)))
+    kpi_cols.append(("Average Profit", fmt_currency(avg_profit)))
+if discount_col:
+    total_discount = df_filtered[discount_col].sum()
+    avg_discount = df_filtered[discount_col].mean()
+    kpi_cols.append(("Total Discount", fmt_currency(total_discount)))
+    kpi_cols.append(("Average Discount", fmt_currency(avg_discount)))
+
+# orders, unique customers, unique products
+if 'OrderID' in df_filtered.columns:
+    kpi_cols.append(("Total Orders", int(df_filtered['OrderID'].nunique())))
+if customer_col:
+    kpi_cols.append(("Unique Customers", int(df_filtered[customer_col].nunique())))
+if product_col:
+    kpi_cols.append(("Unique Products", int(df_filtered[product_col].nunique())))
+if region_col:
+    kpi_cols.append(("Unique Regions", int(df_filtered[region_col].nunique())))
+if city_col:
+    kpi_cols.append(("Unique Cities", int(df_filtered[city_col].nunique())))
+
+# other numeric columns auto-summarize top 3 remaining
+remaining_numeric = [c for c in numeric_cols if c not in [sales_col, profit_col, discount_col] and c is not None]
+for c in remaining_numeric[:3]:
+    kpi_cols.append((f"Avg {c}", fmt_currency(df_filtered[c].mean())))
+
+# render KPI cards: 4 per row
+cols_per_row = 4
+rows = (len(kpi_cols) + cols_per_row - 1) // cols_per_row
+kpi_idx = 0
+for r in range(rows):
+    cols = st.columns(cols_per_row)
+    for i in range(cols_per_row):
+        if kpi_idx < len(kpi_cols):
+            title, value = kpi_cols[kpi_idx]
+            cols[i].metric(label=title, value=value)
+        else:
+            cols[i].write("")  # empty cell
+        kpi_idx += 1
+
+st.header("Sales Insights (Time Series)")
+
+if sales_col and date_col and pd.api.types.is_datetime64_any_dtype(df_filtered[date_col]):
+    freq = st.selectbox("Select time frequency", options=['Daily','Weekly','Monthly','Yearly'], index=2)
+    ts = aggregate_time(df_filtered, date_col, sales_col, freq)
+    fig_ts = px.line(ts, x=date_col, y=sales_col, title=f"{freq} {sales_col} Trend", markers=True)
+    st.plotly_chart(fig_ts, use_container_width=True)
+
+    # month over month / year over year percentage change (if monthly/yearly)
+    if freq in ['Monthly','Yearly']:
+        ts['pct_change'] = ts[sales_col].pct_change()
+        fig_bar = px.bar(ts, x=date_col, y='pct_change', title=f"{freq} % Change in {sales_col}")
+        st.plotly_chart(fig_bar, use_container_width=True)
+else:
+    st.info("Time series charts require both a Sales column and a Date column detected.")
+
+st.header("Top & Bottom Insights")
+
+col1, col2 = st.columns([1,2])
+with col1:
+    tb_choice = st.selectbox("Top or Bottom", options=['Top','Bottom'], index=0)
+    tb_kind = st.selectbox("Choose entity", options=['Products','Customers','Regions','Salesperson'], index=0)
+    tb_n = st.slider("N (how many)", min_value=3, max_value=20, value=5)
+with col2:
+    if tb_kind == 'Products' and product_col and sales_col:
+        tb_df = top_bottom(df_filtered, product_col, sales_col, top=(tb_choice=='Top'), n=tb_n)
+        st.subheader(f"{tb_choice} {tb_n} Products by {sales_col}")
+        st.dataframe(tb_df)
+        fig = px.bar(tb_df, x=product_col, y=sales_col, title=f"{tb_choice} {tb_n} Products")
+        st.plotly_chart(fig, use_container_width=True)
+    elif tb_kind == 'Customers' and customer_col and sales_col:
+        tb_df = top_bottom(df_filtered, customer_col, sales_col, top=(tb_choice=='Top'), n=tb_n if tb_n<=50 else 50)
+        st.subheader(f"{tb_choice} {tb_n} Customers by {sales_col}")
+        st.dataframe(tb_df)
+        fig = px.bar(tb_df, x=customer_col, y=sales_col, title=f"{tb_choice} {tb_n} Customers")
+        st.plotly_chart(fig, use_container_width=True)
+    elif tb_kind == 'Regions' and region_col and sales_col:
+        tb_df = top_bottom(df_filtered, region_col, sales_col, top=(tb_choice=='Top'), n=tb_n)
+        st.subheader(f"{tb_choice} {tb_n} Regions by {sales_col}")
+        st.dataframe(tb_df)
+        fig = px.bar(tb_df, x=region_col, y=sales_col, title=f"{tb_choice} {tb_n} Regions")
+        st.plotly_chart(fig, use_container_width=True)
+    elif tb_kind == 'Salesperson' and salesperson_col and sales_col:
+        tb_df = top_bottom(df_filtered, salesperson_col, sales_col, top=(tb_choice=='Top'), n=tb_n)
+        st.subheader(f"{tb_choice} {tb_n} Salespersons by {sales_col}")
+        st.dataframe(tb_df)
+        fig = px.bar(tb_df, x=salesperson_col, y=sales_col, title=f"{tb_choice} {tb_n} Salespersons")
+        st.plotly_chart(fig, use_container_width=True)
+    else:
+        st.warning("Required columns for this insight are not present in data.")
+
+st.header("Sales Breakdown")
+
+breakdown_cols = [region_col, city_col, category_col, product_col]
+for col_name in breakdown_cols:
+    if col_name:
+        st.subheader(f"Sales by {col_name}")
+        grp = df_filtered.groupby(col_name)[sales_col].sum().reset_index().sort_values(by=sales_col, ascending=False)
+        fig = px.pie(grp.head(10), names=col_name, values=sales_col, title=f"Top 10 {col_name} by Sales")
+        st.plotly_chart(fig, use_container_width=True)
+        fig_bar = px.bar(grp.head(20), x=col_name, y=sales_col, title=f"{col_name} - Top 20 by Sales")
+        st.plotly_chart(fig_bar, use_container_width=True)
+
+st.header("Customer Insights (RFM & AOV)")
+
+if customer_col and date_col and sales_col:
+    # Recency: days since last order per customer
+    latest_date = df_filtered[date_col].max()
+    rfm = df_filtered.groupby(customer_col).agg({
+        date_col: lambda x: (latest_date - x.max()).days,
+        'OrderID' if 'OrderID' in df_filtered.columns else date_col: 'count',
+        sales_col: 'sum'
+    }).rename(columns={date_col: 'Recency', ('OrderID' if 'OrderID' in df_filtered.columns else date_col): 'Frequency', sales_col: 'Monetary'}).reset_index()
+    # RFM scoring (simple quintiles)
+    rfm['R_rank'] = pd.qcut(rfm['Recency'], 5, labels=[5,4,3,2,1]).astype(int)  # lower recency -> better -> invert
+    rfm['F_rank'] = pd.qcut(rfm['Frequency'].rank(method='first'), 5, labels=[1,2,3,4,5]).astype(int)
+    rfm['M_rank'] = pd.qcut(rfm['Monetary'], 5, labels=[1,2,3,4,5]).astype(int)
+    rfm['RFM_Score'] = rfm['R_rank']*100 + rfm['F_rank']*10 + rfm['M_rank']
+    rfm['AOV'] = rfm['Monetary'] / rfm['Frequency'].replace(0, np.nan)
+    st.dataframe(rfm.sort_values('Monetary', ascending=False).head(10))
+    # Top customer contribution
+    total_sales = df_filtered[sales_col].sum()
+    top_customers = rfm.sort_values('Monetary', ascending=False).head(10)
+    top_customers['Contribution%'] = top_customers['Monetary'] / total_sales * 100
+    st.subheader("Top customers contribution % (Top 10)")
+    st.dataframe(top_customers[[customer_col, 'Monetary','Contribution%']])
+else:
+    st.info("Customer insights require Customer, Date, and Sales columns.")
+
+st.header("Profit & Discount Analysis")
+
+if profit_col:
+    st.subheader("Profit Percentiles")
+    profiles = df_filtered[profit_col].describe(percentiles=[.1,.25,.5,.75,.9]).to_frame().T
+    st.table(profiles := profiles[['10%','25%','50%','75%','90%']].rename(columns={'10%':'P10','25%':'P25','50%':'Median','75%':'P75','90%':'P90'}) if False else profiles)  # to keep consistent table rendering
+
+    # profit heatmap if product/category exist
+    if product_col and category_col:
+        pivot = df_filtered.pivot_table(values=profit_col, index=category_col, columns=product_col, aggfunc='sum', fill_value=0)
+        fig = px.imshow(pivot, title="Profit heatmap (Category x Product)")
+        st.plotly_chart(fig, use_container_width=True)
+    else:
+        # try region x product
+        if region_col and product_col:
+            pivot = df_filtered.pivot_table(values=profit_col, index=region_col, columns=product_col, aggfunc='sum', fill_value=0)
+            fig = px.imshow(pivot, title="Profit heatmap (Region x Product)")
+            st.plotly_chart(fig, use_container_width=True)
+
+if discount_col and sales_col:
+    st.subheader("Discount vs Sales / Profit")
+    fig = px.scatter(df_filtered, x=discount_col, y=sales_col, hover_data=[product_col, customer_col], trendline="ols" if len(df_filtered)>10 else None, title="Discount vs Sales")
+    st.plotly_chart(fig, use_container_width=True)
+    if profit_col:
+        fig2 = px.scatter(df_filtered, x=discount_col, y=profit_col, hover_data=[product_col], title="Discount vs Profit")
+        st.plotly_chart(fig2, use_container_width=True)
+
+st.header("Sales by Place")
+
+if region_col:
+    region_sum = df_filtered.groupby(region_col)[sales_col].sum().reset_index().sort_values(sales_col, ascending=False)
+    fig = px.bar(region_sum, x=region_col, y=sales_col, title="Sales by Region")
+    st.plotly_chart(fig, use_container_width=True)
+if city_col:
+    city_sum = df_filtered.groupby(city_col)[sales_col].sum().reset_index().sort_values(sales_col, ascending=False)
+    fig = px.bar(city_sum.head(30), x=city_col, y=sales_col, title="Top Cities by Sales")
+    st.plotly_chart(fig, use_container_width=True)
+
+st.header("Advanced Insights (Forecasting & Feature Importance)")
+
+# Forecasting: Aggregate monthly sales and apply linear regression to predict next 3 months
+if sales_col and date_col and pd.api.types.is_datetime64_any_dtype(df_filtered[date_col]):
+    try:
+        monthly = df_filtered.set_index(date_col).resample('M')[sales_col].sum().reset_index().dropna()
+        if len(monthly) >= 6:
+            monthly['ds_ord'] = (monthly[date_col].dt.year*12 + monthly[date_col].dt.month).astype(int)
+            X = monthly[['ds_ord']]
+            y = monthly[sales_col].values
+            lr = LinearRegression()
+            lr.fit(X, y)
+            last_ord = monthly['ds_ord'].max()
+            future = []
+            for i in range(1,4):  # next 3 months
+                future_ord = last_ord + i
+                future.append({'ds_ord': future_ord})
+            future_df = pd.DataFrame(future)
+            preds = lr.predict(future_df[['ds_ord']])
+            # prepare display
+            future_dates = []
+            last_date = monthly[date_col].max()
+            for i in range(1,4):
+                future_dates.append((last_date + relativedelta(months=i)).replace(day=1))
+            forecast_df = pd.DataFrame({date_col: future_dates, 'ForecastSales': preds})
+            combined = pd.concat([monthly[[date_col,sales_col]], forecast_df.rename(columns={'ForecastSales': sales_col})], ignore_index=True, sort=False)
+            fig = go.Figure()
+            fig.add_trace(go.Scatter(x=monthly[date_col], y=monthly[sales_col], mode='lines+markers', name='Historical'))
+            fig.add_trace(go.Scatter(x=forecast_df[date_col], y=forecast_df['ForecastSales'], mode='lines+markers', name='Forecast'))
+            fig.update_layout(title="Sales Forecast (Linear Regression) - Next 3 months")
+            st.plotly_chart(fig, use_container_width=True)
+            st.subheader("Forecast table")
+            st.dataframe(forecast_df)
+        else:
+            st.info("Not enough monthly data points (need >=6) for reliable forecasting.")
+    except Exception as e:
+        st.error(f"Forecasting failed: {e}")
+else:
+    st.info("Forecasting requires Sales and Date columns.")
+
+# Feature Importance: attempt if enough numeric features
+st.subheader("Feature Importance for Sales (if applicable)")
+try:
+    cand_features = []
+    df_model = df_filtered.copy()
+    # Prepare candidate numeric & categorical features excluding target and identifiers
+    for c in df_model.columns:
+        if c in [sales_col, profit_col, discount_col, date_col, 'OrderID', customer_col, product_col]:
+            continue
+        if pd.api.types.is_numeric_dtype(df_model[c]):
+            cand_features.append(c)
+    # For categorical features, encode top N categories
+    cat_to_encode = []
+    for c in [product_col, category_col, region_col, city_col, salesperson_col]:
+        if c and c in df_model.columns:
+            # include if cardinality reasonable
+            if df_model[c].nunique() <= 200:
+                cat_to_encode.append(c)
+    if not cand_features and not cat_to_encode:
+        st.info("No suitable features found for importance modeling.")
+    else:
+        # build feature matrix
+        Xf = pd.DataFrame(index=df_model.index)
+        for c in cand_features:
+            Xf[c] = df_model[c].fillna(df_model[c].median())
+        # ordinal encode categorical columns
+        if cat_to_encode:
+            oe = OrdinalEncoder(handle_unknown='use_encoded_value', unknown_value=-1)
+            try:
+                enc = oe.fit_transform(df_model[cat_to_encode].fillna('NA'))
+                enc_df = pd.DataFrame(enc, columns=cat_to_encode, index=df_model.index)
+                Xf = pd.concat([Xf, enc_df], axis=1)
+            except Exception:
+                # fallback: simple factorize
+                for c in cat_to_encode:
+                    Xf[c] = pd.factorize(df_model[c].fillna('NA'))[0]
+        # drop rows where target missing
+        model_df = pd.concat([Xf, df_model[sales_col]], axis=1).dropna()
+        if model_df.shape[0] > 50 and model_df.shape[1] > 1:
+            X = model_df.drop(columns=[sales_col])
+            y = model_df[sales_col]
+            rf = RandomForestRegressor(n_estimators=100, random_state=42)
+            rf.fit(X, y)
+            importances = pd.Series(rf.feature_importances_, index=X.columns).sort_values(ascending=False)
+            fig = px.bar(importances.reset_index().rename(columns={'index':'feature',0:'importance'}), x='feature', y=0, title='Feature Importance (RandomForest)')
+            st.plotly_chart(fig, use_container_width=True)
+            st.dataframe(importances.head(20).reset_index().rename(columns={'index':'feature',0:'importance'}))
+        else:
+            st.info("Not enough data or features to compute feature importance (need >50 rows and >1 feature).")
+except Exception as e:
+    st.error(f"Feature importance failed: {e}")
+
+st.header("Export & Download")
+with st.expander("Download filtered dataset"):
+    csv = df_filtered.to_csv(index=False)
+    st.download_button("Download filtered CSV", data=csv, file_name="filtered_data.csv", mime="text/csv")
+
+with st.expander("Download RFM (if available)"):
+    try:
+        if 'rfm' in locals():
+            st.download_button("Download RFM CSV", data=rfm.to_csv(index=False), file_name="rfm.csv", mime="text/csv")
+        else:
+            st.write("RFM not generated (requires Customer, Date, Sales columns).")
+    except Exception as e:
+        st.write("Error preparing RFM download:", e)
+
+st.markdown("---")
+st.markdown("### Notes")
+st.markdown("""
+- This automated dashboard attempts to be flexible: it will only show widgets for columns that exist.
+- For best results, upload a cleaned dataset where Sales, Date, Product, Customer columns are present and properly formatted.
+- Forecasting here uses a simple linear regression on monthly aggregates (quick baseline). For production you may want to use more advanced time-series models (Prophet, ARIMA, or ML-based pipelines).
+- Feature importance uses a RandomForest baseline; interpret carefully and consider cross-validation for robustness.
+""")
