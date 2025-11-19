@@ -1,5 +1,5 @@
 # Autodash
-# AI Dashboard Maker
+# AI Powered Automated Dashboard Generator
 
 This project is an AI-assisted data analysis and dashboard automation tool built using Streamlit, Pandas, NumPy, Plotly, and machine learning utilities. It allows users to upload a dataset (CSV or Excel) and automatically generates interactive dashboards, insights, and visual reports without requiring manual coding or technical expertise.
 
