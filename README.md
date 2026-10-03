@@ -1,126 +1,92 @@
-# Autodash
-# AI Powered Automated Dashboard Generator
+AutoDash AI
 
-This project is an AI-assisted data analysis and dashboard automation tool built using Streamlit, Pandas, NumPy, Plotly, and machine learning utilities. It allows users to upload a dataset (CSV or Excel) and automatically generates interactive dashboards, insights, and visual reports without requiring manual coding or technical expertise.
+Upload your data. Get your dashboard.
 
-The system processes raw data, detects missing values, formats columns, performs statistical evaluations, and converts the dataset into meaningful visualizations. Users can explore trends, patterns, descriptive summaries, and chart-based analysis through a clean, interactive web interface.
+AutoDash AI is a single-file, browser-based business intelligence tool. Upload a spreadsheet and it inspects your columns, detects your industry, builds a dashboard, and lets you ask questions about your data in plain English — with every number traceable back to a real calculation on your rows.
 
-This project is especially useful for analysts, business intelligence users, students, researchers, and data scientists who want quick data exploration without writing code. The solution can serve as a foundation for automated reporting systems, AI BI-tools, and rapid exploratory data analysis workflows.
+No backend. No database. No API keys. Your file never leaves the browser tab.
 
+Live demo →
 
-🚀 Key Capabilities
+Why
 
-Upload CSV or Excel datasets directly through the browser
+Most people with a sales or operations spreadsheet don't know Power BI, Tableau, pivot tables, or SQL — and don't want to learn them to answer a simple question like "which region is behind target this month?" AutoDash AI reads the file, figures out what the columns mean, and builds the dashboard a business user would have built by hand — automatically, and without ever making up a number.
 
-Automatic data cleaning and missing value handling
+Features
+Upload & inspect
+Drag-and-drop or browse for .xlsx, .xls, or .csv
+Row/column/file-size/sheet count shown immediately after parsing
+Data Health Report — a transparent 0–100 score built from five measured factors (completeness, duplicate rows, date validity, numeric validity, category consistency), with the exact formula shown, not an arbitrary number
+Column intelligence
+Matches each column to a business concept (Sales, Target, Quantity, Product/SKU, Sales Manager, Distributor, Geography, etc.) with a confidence level (High / Medium / Low)
+Every mapping is editable — correcting a column updates industry detection and the dashboard immediately
+Industry detection
+Scores the dataset against FMCG, Retail, E-commerce, Automotive, Manufacturing, Distribution/Logistics, and General Business templates based on which columns are actually present
+Shows its reasoning ("this dataset contains SKU, ASM, Distributor and Target fields, typical of FMCG data") and can be overridden manually
+The selected industry changes which dashboard template is used — it never changes or invents the underlying data
+Auto-generated dashboard
+KPI cards (Total, Target, Achievement %, Growth, Active entities, Record count) — a card only appears if the dataset actually supports it
+Trend chart (monthly, from any detected date column) and a top-category bar chart
+A ranking table (by ASM, distributor, product, or region — whichever the data supports) with Target vs. Achievement where available
+Live filters (date range + up to three category filters) that recompute every KPI and chart from the underlying rows — nothing is cached or faked
+An "Explain" button on every KPI shows the exact formula and the numbers used to produce it
+Auto-generated business insights (top contributor, under-target flags, period-over-period spikes/drops), each with a "View calculation" link
+Ask Your Data
+Type a question — "which ASM has the highest achievement?", "top 5 SKUs by revenue", "compare Delhi and Punjab", "what's the growth this period?"
+Answers come from a deterministic rule-based parser, not an LLM — every answer is a real calculation over your parsed rows, and the formula + row count used is shown underneath
+If a question needs a column the dataset doesn't have, it says so explicitly instead of guessing
+Explore & export
+Searchable, sortable, paginated data table, plus a full per-column data profile (type, non-null %, unique values, min/max/avg)
+Excel export — a multi-sheet workbook (Dashboard, Cleaned Data, Data Profile, Data Quality)
+CSV export — filtered view or full dataset
+Chart PNG export
+Print-to-PDF — a presentation-ready report via the browser's native print dialog
+Three themes: Minimal Light, Executive, Dark Analytics
+Tech stack
 
-On-the-fly visualizations using Plotly and Matplotlib
+Everything runs client-side in a single HTML file:
 
-Summary statistics, correlations, and numeric evaluation
+Vanilla JavaScript (no framework) for parsing, profiling, semantic detection, filtering, the dashboard, and the Ask Your Data engine
+Chart.js for charts
+SheetJS (xlsx) for .xlsx / .xls parsing; a hand-written RFC4180-style parser handles .csv
+No build step, no dependencies to install, no server
+Getting started
+bash
+git clone https://github.com/<you>/autodash-ai.git
+cd autodash-ai
+# just open it
+open autodash-ai.html     # macOS
+# or double-click the file / serve it with any static server
+python3 -m http.server 8000
 
-AI-style automated insights and interpretations (optional)
+Then open http://localhost:8000/autodash-ai.html and upload a spreadsheet, or click Try Demo to load a synthetic FMCG dataset.
 
-Fast and user-friendly Streamlit-based interface
+How the calculation engine works
 
-Works locally or can be deployed online
+AutoDash AI follows one rule throughout: the AI layer explains, it never calculates.
 
+Question → Intent detection → Column/metric mapping → Aggregation over real rows → Result → Explanation
+Numbers are always produced by summing, grouping, or averaging the actual parsed dataset — never estimated or inferred by a language model
+If a required column doesn't exist, the app says so instead of answering
+Every KPI, chart, and insight carries its formula and the row count behind it, visible on demand
+Scope & limitations
 
-🧠 How It Works
+This is a client-side demo, not a hosted SaaS product. It intentionally does not include:
 
-User uploads a dataset
+User accounts, authentication, or multi-user access
+A server or database — so no saved dashboard history or link-sharing between users
+A drag/resize dashboard editor (themes are switchable instead)
+An actual LLM for "Ask Your Data" — it's a rule-based pattern matcher by design, which is what keeps every answer traceable to a real calculation
 
-Backend processes data and performs checks:
+These would be natural next steps for a production version (e.g. a FastAPI + Postgres backend for storage/sharing, and an LLM layer constrained to column-mapping and phrasing rather than arithmetic).
 
-Column detection
+License
 
-Datatype identification
+MIT — see LICENSE.
 
-Missing value handling
+Acknowledgements
 
-Multiple charts are generated including:
-
-Line charts
-
-Bar charts
-
-Histograms
-
-Scatter plots
-
-Data summaries, metrics, and insights are displayed alongside charts
-
-Users can interact with filters and explore deeper visual analysis
-
-
-📂 Ideal Use Cases
-
-Business dashboards
-
-Exploratory Data Analysis (EDA)
-
-Academic research analytics
-
-Machine-learning dataset inspection
-
-Reporting automation
-
-Quick insights for decision-makers
-
-🛠 Tech Stack
-
-Python – Core programming
-
-Pandas / NumPy – Data processing
-
-Plotly – Interactive visualizations
-
-Streamlit – Web app framework
-
-Scikit-Learn (optional) – Data imputation, preprocessing
-
-
-📈 Why This Project Is Valuable
-
-This project demonstrates professional-grade skills including:
-
-Clean code and modular structuring
-
-Data handling best practices
-
-Front-end + backend integration
-
-Dashboard development
-
-Automated analytics workflows
-
-Deployable application design
-
-It can be showcased in:
-
-GitHub portfolio
-
-Technical resume
-
-Job interviews
-
-Internship applications
-
-Data science portfolios
-
-
-🌐 Possible Improvements (Future Scope)
-
-Cloud deployment using Streamlit Cloud, Render, or EC2
-
-Auto machine learning model selection
-
-Natural Language Querying (Ask your data in plain English)
-
-User authentication
-
-Multi-page dashboard support
-
-Theme customization and exportable reports (PDF)
+Built as a demonstration of a calculation-first, no-hallucination approach to AI-assisted analytics: the interface and narrative layer can be flexible, but the numbers are never allowed to be.
 
 some screenshots 👇👇👇
 
