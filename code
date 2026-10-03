@@ -1,547 +1,1614 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>AutoDash AI — Upload your data. Get your dashboard.</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<style>
+/* ============ TOKENS ============ */
+:root{
+  --ink:#12213C;
+  --paper:#EEF0EA;
+  --paper-alt:#E3E6DE;
+  --card:#FFFFFF;
+  --line:rgba(18,33,60,.14);
+  --line-strong:rgba(18,33,60,.26);
+  --text-dim:rgba(18,33,60,.62);
+  --accent:#156B62;
+  --accent-ink:#ffffff;
+  --accent-2:#B9811F;
+  --pos:#1F7A4C;
+  --neg:#B23B2E;
+  --radius:14px;
+  --radius-sm:8px;
+  --shadow:0 1px 2px rgba(18,33,60,.06), 0 10px 28px -14px rgba(18,33,60,.22);
+  --font-display:'Space Grotesk', 'Arial Narrow', Arial, sans-serif;
+  --font-body:'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-data:'IBM Plex Mono', 'SF Mono', Consolas, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]):not([data-theme="executive"]){
+    --ink:#ECEEE8; --paper:#0D131E; --paper-alt:#121A27; --card:#141C2A;
+    --line:rgba(236,238,232,.14); --line-strong:rgba(236,238,232,.26);
+    --text-dim:rgba(236,238,232,.6); --accent:#2FB7A6; --accent-ink:#06130F;
+    --accent-2:#E0A94B; --pos:#3FBE7C; --neg:#E2695B; color-scheme: dark;
+  }
+}
+[data-theme="dark"]{
+  --ink:#ECEEE8; --paper:#0D131E; --paper-alt:#121A27; --card:#141C2A;
+  --line:rgba(236,238,232,.14); --line-strong:rgba(236,238,232,.26);
+  --text-dim:rgba(236,238,232,.6); --accent:#2FB7A6; --accent-ink:#06130F;
+  --accent-2:#E0A94B; --pos:#3FBE7C; --neg:#E2695B; color-scheme: dark;
+}
+[data-theme="executive"]{
+  --ink:#1A1A18; --paper:#F4F2EC; --paper-alt:#E9E5D9; --card:#FFFFFF;
+  --line:rgba(26,26,24,.16); --line-strong:rgba(26,26,24,.3);
+  --text-dim:rgba(26,26,24,.6); --accent:#0F2F4D; --accent-ink:#ffffff;
+  --accent-2:#8C6A2F; --pos:#1F6B3F; --neg:#9C3A2C; color-scheme: light;
+}
+*{box-sizing:border-box;}
+html{scroll-padding-top:env(safe-area-inset-top,0px);}
+body{
+  margin:0; background:var(--paper); color:var(--ink);
+  font-family:var(--font-body); font-size:15px; line-height:1.55;
+  -webkit-font-smoothing:antialiased;
+  padding-top:env(safe-area-inset-top,0px);
+  padding-bottom:env(safe-area-inset-bottom,0px);
+  transition:background .25s ease, color .25s ease;
+}
+h1,h2,h3,h4{font-family:var(--font-display); margin:0; letter-spacing:-.01em;}
+p{margin:0;}
+a{color:inherit;}
+.num{font-family:var(--font-data); font-variant-numeric:tabular-nums;}
+button{font-family:inherit; cursor:pointer;}
+::selection{background:var(--accent); color:var(--accent-ink);}
+:focus-visible{outline:2px solid var(--accent); outline-offset:2px;}
+.wrap{max-width:1180px; margin:0 auto; padding:0 28px;}
+@media(max-width:720px){.wrap{padding:0 18px;}}
 
-import streamlit as st
-import pandas as pd
-import numpy as np
-import plotly.express as px
-import plotly.graph_objects as go
-from sklearn.impute import SimpleImputer
-from sklearn.linear_model import LinearRegression
-from sklearn.ensemble import RandomForestRegressor
-from sklearn.preprocessing import OrdinalEncoder
-from sklearn.model_selection import train_test_split
-from datetime import datetime, timedelta
-from dateutil.relativedelta import relativedelta
+/* ============ NAV ============ */
+#topnav{
+  position:sticky; top:0; z-index:40; background:color-mix(in srgb, var(--paper) 88%, transparent);
+  backdrop-filter:blur(10px); border-bottom:1px solid var(--line);
+  padding-top:env(safe-area-inset-top,0px);
+}
+.nav-inner{display:flex; align-items:center; justify-content:space-between; height:66px;}
+.brand{display:flex; align-items:center; gap:9px; font-family:var(--font-display); font-weight:600; font-size:18px;}
+.brand .mark{width:26px;height:26px;border-radius:7px;background:var(--accent);display:flex;align-items:center;justify-content:center;}
+.brand .mark svg{width:15px;height:15px;}
+.nav-links{display:flex; gap:28px; align-items:center;}
+.nav-links a{font-size:14px; color:var(--text-dim); text-decoration:none;}
+.nav-links a:hover{color:var(--ink);}
+.btn{
+  display:inline-flex; align-items:center; justify-content:center; gap:8px;
+  padding:11px 20px; border-radius:999px; border:1px solid var(--line-strong);
+  background:transparent; color:var(--ink); font-size:14px; font-weight:500; white-space:nowrap;
+  transition:transform .15s ease, border-color .15s ease, background .15s ease;
+}
+.btn:hover{border-color:var(--ink); transform:translateY(-1px);}
+.btn-primary{background:var(--accent); color:var(--accent-ink); border-color:var(--accent);}
+.btn-primary:hover{filter:brightness(1.08); border-color:var(--accent);}
+.btn-sm{padding:7px 14px; font-size:13px; border-radius:8px;}
+.btn-ghost{border-color:transparent;}
+.btn-ghost:hover{border-color:var(--line-strong);}
+.btn:disabled{opacity:.45; pointer-events:none;}
+@media(max-width:860px){.nav-links{display:none;}}
 
-st.set_page_config(layout="wide", page_title="AI Automated Dashboard Maker", initial_sidebar_state="expanded")
+/* ============ LANDING ============ */
+.eyebrow{font-size:13px; color:var(--accent-2); font-weight:600;}
+.hero{padding:84px 0 56px;}
+.hero-grid{display:grid; grid-template-columns:1.05fr .95fr; gap:56px; align-items:center;}
+@media(max-width:900px){.hero-grid{grid-template-columns:1fr; gap:40px;}}
+.hero h1{font-size:clamp(34px,5vw,58px); line-height:1.04; font-weight:600; max-width:620px;}
+.hero p.sub{margin-top:20px; font-size:18px; color:var(--text-dim); max-width:520px; line-height:1.6;}
+.hero-cta{display:flex; gap:12px; margin-top:32px; flex-wrap:wrap;}
 
+.flow-card{
+  background:var(--card); border:1px solid var(--line); border-radius:18px; padding:26px;
+  box-shadow:var(--shadow);
+}
+.flow-step{
+  display:flex; align-items:center; gap:14px; padding:14px 4px; opacity:.35; transform:translateX(-6px);
+  transition:opacity .5s ease, transform .5s ease;
+}
+.flow-step.on{opacity:1; transform:translateX(0);}
+.flow-step .dot{
+  width:34px;height:34px;border-radius:9px;background:var(--paper-alt);border:1px solid var(--line);
+  display:flex;align-items:center;justify-content:center; font-family:var(--font-data); font-size:13px; flex-shrink:0;
+}
+.flow-step.on .dot{background:var(--accent); color:var(--accent-ink); border-color:var(--accent);}
+.flow-step .lbl{font-weight:500; font-size:15px;}
+.flow-step .sub{font-size:12.5px; color:var(--text-dim); margin-top:2px;}
+.flow-line{width:1px; height:16px; background:var(--line); margin-left:21px;}
 
-# ---------------------------
-# Utility helpers
-# ---------------------------
-@st.cache_data
-def read_csv(uploaded_file):
-    try:
-        df = pd.read_csv(uploaded_file)
-    except Exception:
-        uploaded_file.seek(0)
-        df = pd.read_csv(uploaded_file, encoding='latin1', engine='python')
-    return df
+.strip{padding:50px 0; border-top:1px solid var(--line); border-bottom:1px solid var(--line);}
+.strip-row{display:flex; gap:0; justify-content:space-between; flex-wrap:wrap;}
+.strip-item{flex:1; min-width:150px; padding:0 18px; text-align:center;}
+.strip-item .n{font-family:var(--font-data); font-size:28px; font-weight:600; color:var(--accent);}
+.strip-item .t{font-size:13px; color:var(--text-dim); margin-top:4px;}
 
-def detect_date_column(df):
-    # heuristics: look for 'date' in column name or dtype datetime or parseable
-    for col in df.columns:
-        if 'date' in col.lower():
-            return col
-    # fallback: find first column that pandas can parse to datetime for >50% rows
-    for col in df.columns:
-        try:
-            parsed = pd.to_datetime(df[col], errors='coerce')
-            non_null_ratio = parsed.notnull().mean()
-            if non_null_ratio > 0.5:
-                return col
-        except Exception:
-            continue
-    return None
+.section{padding:76px 0;}
+.section-head{max-width:560px; margin-bottom:40px;}
+.section-head h2{font-size:clamp(26px,3.4vw,36px); font-weight:600;}
+.section-head p{margin-top:12px; color:var(--text-dim); font-size:16px; line-height:1.6;}
 
-def identify_columns(df, date_col=None):
-    numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
-    categorical_cols = df.select_dtypes(include=['object', 'category']).columns.tolist()
-    if date_col:
-        if date_col in numeric_cols:
-            numeric_cols.remove(date_col)
-        if date_col in categorical_cols:
-            categorical_cols.remove(date_col)
-    return numeric_cols, categorical_cols
+.grid-3{display:grid; grid-template-columns:repeat(3,1fr); gap:20px;}
+@media(max-width:860px){.grid-3{grid-template-columns:1fr 1fr;}}
+@media(max-width:600px){.grid-3{grid-template-columns:1fr;}}
+.feat{border:1px solid var(--line); border-radius:var(--radius); padding:24px; background:var(--card);}
+.feat .ic{width:36px;height:36px;border-radius:9px;background:var(--paper-alt);display:flex;align-items:center;justify-content:center; margin-bottom:16px;}
+.feat h3{font-size:16px; font-weight:600; margin-bottom:8px;}
+.feat p{font-size:14px; color:var(--text-dim); line-height:1.55;}
 
-def safe_datetime_conversion(df, date_col):
-    try:
-        df[date_col] = pd.to_datetime(df[date_col], errors='coerce')
-    except Exception:
-        df[date_col] = pd.to_datetime(df[date_col].astype(str), errors='coerce')
-    return df
+.industries{display:flex; gap:10px; flex-wrap:wrap; margin-top:28px;}
+.ind-chip{border:1px solid var(--line); border-radius:999px; padding:8px 16px; font-size:13.5px; color:var(--text-dim);}
 
-def impute_numeric(df, numeric_cols):
-    if not numeric_cols:
-        return df
-    imputer = SimpleImputer(strategy='median')
-    df[numeric_cols] = imputer.fit_transform(df[numeric_cols])
-    return df
+.trust{display:grid; grid-template-columns:1fr 1fr; gap:40px; align-items:center;}
+@media(max-width:800px){.trust{grid-template-columns:1fr;}}
+.trust-list{display:flex; flex-direction:column; gap:14px; margin-top:18px;}
+.trust-list .row{display:flex; gap:12px; align-items:flex-start; font-size:14.5px;}
+.trust-list .row .chk{color:var(--accent); font-family:var(--font-data); flex-shrink:0;}
 
-def fmt_currency(x):
-    try:
-        return f"{x:,.2f}"
-    except Exception:
-        return x
+.cta-band{background:var(--ink); color:var(--paper); border-radius:20px; padding:56px 44px; display:flex; justify-content:space-between; align-items:center; gap:24px; flex-wrap:wrap;}
+[data-theme="dark"] .cta-band{background:var(--paper-alt); color:var(--ink); border:1px solid var(--line-strong);}
+.cta-band h2{font-size:28px; color:inherit;}
+.cta-band .btn-primary{background:var(--paper); color:var(--ink); border-color:var(--paper);}
+[data-theme="dark"] .cta-band .btn-primary{background:var(--accent); color:var(--accent-ink); border-color:var(--accent);}
 
-def top_bottom(df, by_col, value_col, top=True, n=5):
-    if top:
-        res = df.groupby(by_col)[value_col].sum().sort_values(ascending=False).head(n).reset_index()
-    else:
-        res = df.groupby(by_col)[value_col].sum().sort_values(ascending=True).head(n).reset_index()
-    return res
+footer{border-top:1px solid var(--line); padding:36px 0; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:16px;}
+footer .fsub{font-size:13px; color:var(--text-dim);}
+.theme-switch{display:flex; gap:6px; border:1px solid var(--line); border-radius:999px; padding:3px;}
+.theme-switch button{border:none; background:transparent; padding:6px 12px; border-radius:999px; font-size:12.5px; color:var(--text-dim);}
+.theme-switch button.active{background:var(--ink); color:var(--paper);}
 
-def aggregate_time(df, date_col, value_col, freq):
-    if freq == 'Daily':
-        g = df.set_index(date_col).resample('D')[value_col].sum().reset_index()
-    elif freq == 'Weekly':
-        g = df.set_index(date_col).resample('W-MON')[value_col].sum().reset_index()
-    elif freq == 'Monthly':
-        g = df.set_index(date_col).resample('M')[value_col].sum().reset_index()
-    elif freq == 'Yearly':
-        g = df.set_index(date_col).resample('Y')[value_col].sum().reset_index()
-    else:
-        g = df[[date_col, value_col]]
-    return g
+/* ============ APP SHELL ============ */
+#appview{display:none; min-height:calc(100vh - 66px);}
+#appview.on{display:block;}
+#landing.off{display:none;}
+.steps-rail{
+  display:flex; gap:4px; padding:16px 0; overflow-x:auto; border-bottom:1px solid var(--line);
+}
+.step-pill{
+  display:flex; align-items:center; gap:8px; padding:8px 14px; border-radius:999px; font-size:13px;
+  color:var(--text-dim); white-space:nowrap; border:1px solid transparent; flex-shrink:0;
+}
+.step-pill .d{width:18px;height:18px;border-radius:50%;background:var(--paper-alt);display:flex;align-items:center;justify-content:center;font-family:var(--font-data);font-size:10px;}
+.step-pill.active{color:var(--ink); border-color:var(--line); background:var(--card); font-weight:500;}
+.step-pill.active .d{background:var(--accent); color:var(--accent-ink);}
+.step-pill.done .d{background:var(--pos); color:#fff;}
 
-st.title("AI-Powered Automated Dashboard Maker")
-st.markdown("Upload a cleaned CSV file with sales data — the app will auto-detect columns and generate insights.")
+.app-main{padding:34px 0 80px;}
+.panel{display:none;}
+.panel.on{display:block;}
 
-uploaded_file = st.sidebar.file_uploader("Upload CSV", type=['csv'])
-sample_btn = st.sidebar.button("Load sample dataset")
+/* upload */
+.upload-zone{
+  border:2px dashed var(--line-strong); border-radius:20px; padding:64px 32px; text-align:center;
+  background:var(--card); transition:border-color .15s ease, background .15s ease;
+}
+.upload-zone.drag{border-color:var(--accent); background:color-mix(in srgb, var(--accent) 8%, var(--card));}
+.upload-zone h3{font-size:20px; margin-bottom:8px;}
+.upload-zone p{color:var(--text-dim); font-size:14px;}
+.upload-icon{width:52px;height:52px;border-radius:14px;background:var(--paper-alt);display:flex;align-items:center;justify-content:center;margin:0 auto 20px;}
+#fileInput{display:none;}
+.filetypes{margin-top:18px; display:flex; gap:8px; justify-content:center; flex-wrap:wrap;}
+.filetypes span{font-family:var(--font-data); font-size:11.5px; border:1px solid var(--line); border-radius:6px; padding:3px 8px; color:var(--text-dim);}
+.err-box{margin-top:18px; border:1px solid var(--neg); background:color-mix(in srgb, var(--neg) 10%, var(--card)); color:var(--neg); border-radius:10px; padding:14px 16px; font-size:13.5px; text-align:left;}
 
-if sample_btn:
-    # create a simple synthetic dataset for demo if user wants sample
-    rng = pd.date_range(end=pd.Timestamp.today(), periods=365)
-    sample = pd.DataFrame({
-        "OrderDate": np.random.choice(rng, size=1000),
-        "OrderID": np.arange(1000),
-        "Product": np.random.choice(['A','B','C','D','E','F'], size=1000),
-        "Category": np.random.choice(['Cat1','Cat2','Cat3'], size=1000),
-        "Sales": np.round(np.random.gamma(5, 50, size=1000),2),
-        "Profit": np.round(np.random.normal(20, 15, size=1000),2),
-        "Discount": np.round(np.random.choice([0,0.05,0.1,0.2], size=1000),2),
-        "CustomerID": np.random.choice([f"C{i:03d}" for i in range(1,201)], size=1000),
-        "Salesperson": np.random.choice(['S1','S2','S3','S4'], size=1000),
-        "Region": np.random.choice(['North','South','West','East'], size=1000),
-        "City": np.random.choice(['CityA','CityB','CityC','CityD'], size=1000),
-    })
-    uploaded_df = sample
-else:
-    uploaded_df = None
+.file-summary{display:flex; align-items:center; gap:16px; background:var(--card); border:1px solid var(--line); border-radius:var(--radius); padding:18px 22px; margin-top:20px; flex-wrap:wrap;}
+.file-summary .fname{font-weight:600; font-family:var(--font-data); font-size:14px;}
+.file-summary .meta{display:flex; gap:18px; flex-wrap:wrap; font-size:13px; color:var(--text-dim);}
+.file-summary .meta b{color:var(--ink); font-family:var(--font-data);}
 
-if uploaded_file is not None:
-    df = read_csv(uploaded_file)
-elif uploaded_df is not None:
-    df = uploaded_df.copy()
-else:
-    st.info("Please upload a CSV file to begin or click 'Load sample dataset'.")
-    st.stop()
+/* inspect */
+.health-card{display:grid; grid-template-columns:200px 1fr; gap:28px; background:var(--card); border:1px solid var(--line); border-radius:var(--radius); padding:26px; align-items:center;}
+@media(max-width:700px){.health-card{grid-template-columns:1fr;}}
+.health-ring{position:relative; width:150px; height:150px; margin:0 auto;}
+.health-ring svg{transform:rotate(-90deg);}
+.health-ring .score{position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center;}
+.health-ring .score .n{font-family:var(--font-data); font-size:34px; font-weight:600;}
+.health-ring .score .l{font-size:11px; color:var(--text-dim);}
+.health-metrics{display:grid; grid-template-columns:1fr 1fr; gap:12px;}
+.hm-row{display:flex; justify-content:space-between; font-size:13.5px; border-bottom:1px dashed var(--line); padding-bottom:8px;}
+.hm-row b{font-family:var(--font-data);}
 
+.card{background:var(--card); border:1px solid var(--line); border-radius:var(--radius); padding:22px;}
+.card + .card{margin-top:18px;}
+.card h3{font-size:15px; font-weight:600; margin-bottom:14px; display:flex; align-items:center; justify-content:space-between;}
 
-orig_cols = df.columns.tolist()
-st.sidebar.markdown(f"**Detected columns ({len(orig_cols)})**")
-for c in orig_cols:
-    st.sidebar.text(c)
+table.data-tbl{width:100%; border-collapse:collapse; font-size:13px;}
+table.data-tbl th{text-align:left; font-weight:600; font-size:11.5px; text-transform:none; color:var(--text-dim); border-bottom:1px solid var(--line-strong); padding:8px 10px; white-space:nowrap;}
+table.data-tbl td{padding:8px 10px; border-bottom:1px solid var(--line); white-space:nowrap;}
+table.data-tbl tbody tr:hover{background:var(--paper-alt);}
+.tbl-scroll{overflow-x:auto;}
+.badge{font-size:10.5px; padding:2px 7px; border-radius:5px; font-family:var(--font-data);}
+.badge.high{background:color-mix(in srgb, var(--pos) 16%, transparent); color:var(--pos);}
+.badge.medium{background:color-mix(in srgb, var(--accent-2) 20%, transparent); color:var(--accent-2);}
+.badge.low{background:color-mix(in srgb, var(--neg) 14%, transparent); color:var(--neg);}
+select.role-select{font-size:12px; padding:4px 6px; border-radius:6px; border:1px solid var(--line-strong); background:var(--card); color:var(--ink); font-family:var(--font-body);}
 
-detected_date_col = detect_date_column(df)
-if detected_date_col:
-    df = safe_datetime_conversion(df, detected_date_col)
-else:
-    # allow user to pick
-    st.sidebar.markdown("No date column confidently detected.")
-    user_pick_date = st.sidebar.selectbox("If you have a date column, choose it here:", options=[None]+orig_cols, index=0)
-    if user_pick_date:
-        detected_date_col = user_pick_date
-        df = safe_datetime_conversion(df, detected_date_col)
+/* industry */
+.industry-card{display:flex; align-items:center; justify-content:space-between; gap:20px; flex-wrap:wrap;}
+.ind-main{display:flex; align-items:center; gap:16px;}
+.ind-main .ic{width:48px;height:48px;border-radius:12px;background:var(--paper-alt);display:flex;align-items:center;justify-content:center; font-size:22px;}
+.conf-bar{width:100%; height:6px; border-radius:99px; background:var(--paper-alt); overflow:hidden; margin-top:8px;}
+.conf-bar i{display:block; height:100%; background:var(--accent);}
+.reason{font-size:13px; color:var(--text-dim); margin-top:10px; line-height:1.5;}
 
-numeric_cols, categorical_cols = identify_columns(df, date_col=detected_date_col)
-df = impute_numeric(df, numeric_cols)
+/* dashboard */
+.db-header{display:flex; justify-content:space-between; align-items:flex-start; gap:16px; flex-wrap:wrap; margin-bottom:18px;}
+.filters-row{display:flex; gap:10px; flex-wrap:wrap; background:var(--card); border:1px solid var(--line); border-radius:12px; padding:12px 14px; margin-bottom:20px;}
+.filter-f{display:flex; flex-direction:column; gap:4px;}
+.filter-f label{font-size:11px; color:var(--text-dim);}
+.filter-f select, .filter-f input{font-size:13px; padding:6px 8px; border-radius:7px; border:1px solid var(--line-strong); background:var(--paper); color:var(--ink); font-family:var(--font-body);}
 
-# expose column name mapping UI for common columns
-st.sidebar.markdown("---")
-st.sidebar.header("Column mapping (optional)")
-sales_col = st.sidebar.selectbox("Choose Sales column (if present)", options=[None]+numeric_cols, index=0)
-profit_col = st.sidebar.selectbox("Choose Profit column (if present)", options=[None]+numeric_cols, index=0)
-discount_col = st.sidebar.selectbox("Choose Discount column (if present)", options=[None]+numeric_cols, index=0)
-customer_col = st.sidebar.selectbox("Customer column (if present)", options=[None]+categorical_cols, index=0)
-product_col = st.sidebar.selectbox("Product column (if present)", options=[None]+categorical_cols, index=0)
-category_col = st.sidebar.selectbox("Category column (if present)", options=[None]+categorical_cols, index=0)
-salesperson_col = st.sidebar.selectbox("Salesperson column (if present)", options=[None]+categorical_cols, index=0)
-region_col = st.sidebar.selectbox("Region column (if present)", options=[None]+categorical_cols, index=0)
-city_col = st.sidebar.selectbox("City column (if present)", options=[None]+categorical_cols, index=0)
+.kpi-row{display:grid; grid-template-columns:repeat(auto-fit,minmax(170px,1fr)); gap:14px; margin-bottom:20px;}
+.kpi{background:var(--card); border:1px solid var(--line); border-radius:var(--radius); padding:18px 20px; position:relative;}
+.kpi .l{font-size:12.5px; color:var(--text-dim);}
+.kpi .v{font-family:var(--font-data); font-size:25px; font-weight:600; margin-top:6px;}
+.kpi .d{font-size:12px; margin-top:6px; font-family:var(--font-data);}
+.kpi .d.pos{color:var(--pos);} .kpi .d.neg{color:var(--neg);}
+.kpi .explain-btn{position:absolute; top:14px; right:14px; font-size:10.5px; color:var(--text-dim); border:1px solid var(--line); border-radius:6px; padding:2px 7px; background:transparent;}
+.kpi .explain-btn:hover{border-color:var(--accent); color:var(--accent);}
+.kpi .explain{display:none; margin-top:10px; padding-top:10px; border-top:1px dashed var(--line); font-size:11.5px; font-family:var(--font-data); color:var(--text-dim); line-height:1.6;}
+.kpi .explain.on{display:block;}
 
-# fallback heuristics: if user didn't pick, try to infer by name keywords
-def infer_by_names(df, candidates, keywords):
-    for col in candidates:
-        low = col.lower()
-        if any(k in low for k in keywords):
-            return col
-    return None
+.charts-grid{display:grid; grid-template-columns:1.4fr 1fr; gap:18px; margin-bottom:18px;}
+@media(max-width:860px){.charts-grid{grid-template-columns:1fr;}}
+.chart-wrap{position:relative; height:260px;}
+.chart-card h3{margin-bottom:4px;}
+.chart-sub{font-size:12px; color:var(--text-dim); margin-bottom:14px;}
+.png-btn{font-size:11px;}
 
-if not sales_col:
-    sales_col = infer_by_names(df, numeric_cols, ['sales','amount','revenue','total'])
-if not profit_col:
-    profit_col = infer_by_names(df, numeric_cols, ['profit','gross_profit','margin'])
-if not discount_col:
-    discount_col = infer_by_names(df, numeric_cols, ['discount'])
-if not customer_col:
-    customer_col = infer_by_names(df, categorical_cols, ['customer','client'])
-if not product_col:
-    product_col = infer_by_names(df, categorical_cols, ['product','item','sku'])
-if not category_col:
-    category_col = infer_by_names(df, categorical_cols, ['category','cat','segment'])
-if not salesperson_col:
-    salesperson_col = infer_by_names(df, categorical_cols, ['salesperson','seller','rep','agent'])
-if not region_col:
-    region_col = infer_by_names(df, categorical_cols, ['region','state','zone'])
-if not city_col:
-    city_col = infer_by_names(df, categorical_cols, ['city','town'])
+.insight{display:flex; gap:10px; padding:11px 0; border-bottom:1px dashed var(--line); align-items:flex-start;}
+.insight:last-child{border-bottom:none;}
+.insight .tag{font-size:16px; flex-shrink:0; margin-top:1px;}
+.insight .txt{font-size:13.5px; line-height:1.5;}
+.insight .calc{font-size:11px; color:var(--text-dim); font-family:var(--font-data); margin-top:3px; display:none;}
+.insight .calc.on{display:block;}
+.insight .vcalc{font-size:11px; color:var(--accent); background:none; border:none; padding:0; margin-top:3px; font-family:var(--font-body); text-decoration:underline;}
 
-# ensure date col is set
-date_col = detected_date_col
+/* ask data */
+.chat-shell{background:var(--card); border:1px solid var(--line); border-radius:var(--radius); display:flex; flex-direction:column; height:520px;}
+.chat-log{flex:1; overflow-y:auto; padding:20px; display:flex; flex-direction:column; gap:16px;}
+.chat-msg{max-width:84%; font-size:13.5px; line-height:1.55;}
+.chat-msg.user{align-self:flex-end; background:var(--accent); color:var(--accent-ink); border-radius:12px 12px 2px 12px; padding:10px 14px;}
+.chat-msg.bot{align-self:flex-start; background:var(--paper-alt); border-radius:12px 12px 12px 2px; padding:12px 14px;}
+.chat-msg.bot .ans{font-family:var(--font-data); font-weight:600; font-size:16px; margin-bottom:6px;}
+.chat-msg.bot .calc-box{margin-top:8px; padding-top:8px; border-top:1px dashed var(--line); font-size:11px; font-family:var(--font-data); color:var(--text-dim); line-height:1.7;}
+.chat-suggest{display:flex; gap:8px; flex-wrap:wrap; padding:0 20px 14px;}
+.chip-sug{font-size:12px; border:1px solid var(--line); border-radius:999px; padding:6px 12px; color:var(--text-dim); background:transparent;}
+.chip-sug:hover{border-color:var(--accent); color:var(--accent);}
+.chat-input-row{display:flex; gap:10px; padding:14px; border-top:1px solid var(--line);}
+.chat-input-row input{flex:1; border:1px solid var(--line-strong); border-radius:10px; padding:11px 14px; background:var(--paper); color:var(--ink); font-size:14px; font-family:inherit;}
 
-st.sidebar.markdown("---")
-st.sidebar.header("Filters")
+/* explorer */
+.explorer-toolbar{display:flex; gap:12px; margin-bottom:14px; flex-wrap:wrap; align-items:center; justify-content:space-between;}
+.explorer-toolbar input{border:1px solid var(--line-strong); border-radius:9px; padding:9px 12px; background:var(--card); color:var(--ink); font-size:13.5px; min-width:220px;}
+.pager{display:flex; align-items:center; gap:10px; font-size:13px; color:var(--text-dim); margin-top:14px; justify-content:flex-end;}
+th.sortable{cursor:pointer; user-select:none;}
+th.sortable:hover{color:var(--ink);}
 
-if date_col:
-    min_date = df[date_col].min()
-    max_date = df[date_col].max()
-    date_range = st.sidebar.date_input("Date range", value=(min_date.date() if pd.notnull(min_date) else None, max_date.date() if pd.notnull(max_date) else None))
-    # convert selections to datetimes
-    try:
-        start_date = pd.to_datetime(date_range[0])
-        end_date = pd.to_datetime(date_range[1])
-    except Exception:
-        start_date = min_date
-        end_date = max_date
-else:
-    start_date = None
-    end_date = None
+/* export */
+.export-grid{display:grid; grid-template-columns:repeat(auto-fit,minmax(230px,1fr)); gap:16px;}
+.export-card{background:var(--card); border:1px solid var(--line); border-radius:var(--radius); padding:22px;}
+.export-card h3{font-size:15px; margin-bottom:6px;}
+.export-card p{font-size:13px; color:var(--text-dim); margin-bottom:16px; line-height:1.5;}
+.export-status{font-size:12px; margin-top:10px; color:var(--text-dim);}
+.export-status.ok{color:var(--pos);} .export-status.err{color:var(--neg);}
 
-def apply_filters(df):
-    d = df.copy()
-    if date_col and start_date is not None and end_date is not None:
-        if pd.api.types.is_datetime64_any_dtype(d[date_col]):
-            d = d[(d[date_col] >= pd.to_datetime(start_date)) & (d[date_col] <= pd.to_datetime(end_date))]
-    # region filter
-    if region_col:
-        regions = ['All'] + sorted(d[region_col].dropna().unique().tolist())
-        sel_regions = st.sidebar.multiselect("Region", options=regions, default=['All'])
-        if sel_regions and 'All' not in sel_regions:
-            d = d[d[region_col].isin(sel_regions)]
-    # city filter
-    if city_col:
-        cities = ['All'] + sorted(d[city_col].dropna().unique().tolist())
-        sel_cities = st.sidebar.multiselect("City", options=cities, default=['All'])
-        if sel_cities and 'All' not in sel_cities:
-            d = d[d[city_col].isin(sel_cities)]
-    # product filter
-    if product_col:
-        prods = ['All'] + sorted(d[product_col].dropna().unique().tolist())
-        sel_prods = st.sidebar.multiselect("Product", options=prods, default=['All'])
-        if sel_prods and 'All' not in sel_prods:
-            d = d[d[product_col].isin(sel_prods)]
-    # salesperson filter
-    if salesperson_col:
-        sps = ['All'] + sorted(d[salesperson_col].dropna().unique().tolist())
-        sel_sps = st.sidebar.multiselect("Salesperson", options=sps, default=['All'])
-        if sel_sps and 'All' not in sel_sps:
-            d = d[d[salesperson_col].isin(sel_sps)]
-    # category filter
-    if category_col:
-        cats = ['All'] + sorted(d[category_col].dropna().unique().tolist())
-        sel_cats = st.sidebar.multiselect("Category", options=cats, default=['All'])
-        if sel_cats and 'All' not in sel_cats:
-            d = d[d[category_col].isin(sel_cats)]
-    return d
+.side-nav{position:sticky; top:118px;}
+.app-grid{display:grid; grid-template-columns:200px 1fr; gap:32px; align-items:start;}
+@media(max-width:900px){.app-grid{grid-template-columns:1fr;} .side-nav{display:none;}}
+.side-nav a{display:block; font-size:13.5px; color:var(--text-dim); padding:9px 0; text-decoration:none; border-left:2px solid transparent; padding-left:12px;}
+.side-nav a.active{color:var(--ink); font-weight:500; border-left-color:var(--accent);}
 
-df_filtered = apply_filters(df)
+.hint-box{border:1px solid var(--line); border-radius:10px; padding:14px 16px; background:var(--paper-alt); font-size:12.5px; color:var(--text-dim); line-height:1.6; margin-bottom:18px;}
+.scope-note{font-size:12px; color:var(--text-dim); margin-top:4px;}
 
-# show small preview and data quality
-with st.expander("Data preview & quality"):
-    st.dataframe(df_filtered.head(10), use_container_width=True)
-    missing = df_filtered.isna().sum()
-    st.write("Missing values per column (after imputation of numeric):")
-    st.table(missing[missing>0].sort_values(ascending=False))
+@media print{
+  #topnav, .steps-rail, .filters-row, .side-nav, #askTab, .explorer-toolbar input, .export-grid, footer{display:none !important;}
+  body{background:#fff; color:#000;}
+  .panel{display:block !important;}
+}
+</style>
+</head>
+<body>
 
-st.header("Key Performance Indicators (Auto-generated)")
+<nav id="topnav">
+  <div class="wrap nav-inner">
+    <div class="brand"><span class="mark"><svg viewBox="0 0 24 24" fill="none"><path d="M4 18V10M12 18V4M20 18V13" stroke="white" stroke-width="2.4" stroke-linecap="round"/></svg></span>AutoDash AI</div>
+    <div class="nav-links">
+      <a href="#workflow">How it works</a>
+      <a href="#features">Features</a>
+      <a href="#industries">Industries</a>
+      <a href="#trust">Accuracy</a>
+    </div>
+    <button class="btn btn-primary btn-sm" onclick="AD.launchApp()">Open AutoDash</button>
+  </div>
+</nav>
 
-kpi_cols = []
-if sales_col:
-    total_sales = df_filtered[sales_col].sum()
-    avg_sales = df_filtered[sales_col].mean()
-    kpi_cols.append(("Total Sales", fmt_currency(total_sales)))
-    kpi_cols.append(("Average Sales", fmt_currency(avg_sales)))
-if profit_col:
-    total_profit = df_filtered[profit_col].sum()
-    avg_profit = df_filtered[profit_col].mean()
-    kpi_cols.append(("Total Profit", fmt_currency(total_profit)))
-    kpi_cols.append(("Average Profit", fmt_currency(avg_profit)))
-if discount_col:
-    total_discount = df_filtered[discount_col].sum()
-    avg_discount = df_filtered[discount_col].mean()
-    kpi_cols.append(("Total Discount", fmt_currency(total_discount)))
-    kpi_cols.append(("Average Discount", fmt_currency(avg_discount)))
+<!-- ============ LANDING ============ -->
+<div id="landing">
+  <header class="hero">
+    <div class="wrap hero-grid">
+      <div>
+        <div class="eyebrow">Business intelligence, without the BI team</div>
+        <h1>Upload your data.<br>Get your dashboard.</h1>
+        <p class="sub">AutoDash AI analyzes your business data, discovers the important metrics, builds the right dashboard, and lets you ask questions about your data in plain English.</p>
+        <div class="hero-cta">
+          <button class="btn btn-primary" onclick="AD.launchApp()">Upload Your Data</button>
+          <button class="btn" onclick="AD.launchApp(true)">Try Demo</button>
+        </div>
+        <p class="scope-note">No Power BI. No pivot tables. No SQL.</p>
+      </div>
+      <div class="flow-card" id="heroFlow">
+        <div class="flow-step" data-i="0"><div class="dot">1</div><div><div class="lbl">Excel file</div><div class="sub">FMCG_Sales_Apr-Sep.xlsx</div></div></div>
+        <div class="flow-line"></div>
+        <div class="flow-step" data-i="1"><div class="dot">2</div><div><div class="lbl">Data analysis</div><div class="sub">52,483 rows · 24 columns scanned</div></div></div>
+        <div class="flow-line"></div>
+        <div class="flow-step" data-i="2"><div class="dot">3</div><div><div class="lbl">Industry understanding</div><div class="sub">FMCG detected — 94% confidence</div></div></div>
+        <div class="flow-line"></div>
+        <div class="flow-step" data-i="3"><div class="dot">4</div><div><div class="lbl">Dashboard generated</div><div class="sub">Sales, targets, ASM &amp; SKU ranking ready</div></div></div>
+      </div>
+    </div>
+  </header>
 
-# orders, unique customers, unique products
-if 'OrderID' in df_filtered.columns:
-    kpi_cols.append(("Total Orders", int(df_filtered['OrderID'].nunique())))
-if customer_col:
-    kpi_cols.append(("Unique Customers", int(df_filtered[customer_col].nunique())))
-if product_col:
-    kpi_cols.append(("Unique Products", int(df_filtered[product_col].nunique())))
-if region_col:
-    kpi_cols.append(("Unique Regions", int(df_filtered[region_col].nunique())))
-if city_col:
-    kpi_cols.append(("Unique Cities", int(df_filtered[city_col].nunique())))
+  <section class="strip">
+    <div class="wrap strip-row">
+      <div class="strip-item"><div class="n">0</div><div class="t">guessed numbers — every figure traces to your data</div></div>
+      <div class="strip-item"><div class="n">7</div><div class="t">industries with purpose-built dashboard templates</div></div>
+      <div class="strip-item"><div class="n">3</div><div class="t">file types supported — .xlsx, .xls, .csv</div></div>
+      <div class="strip-item"><div class="n">1</div><div class="t">place to upload, ask, and export</div></div>
+    </div>
+  </section>
 
-# other numeric columns auto-summarize top 3 remaining
-remaining_numeric = [c for c in numeric_cols if c not in [sales_col, profit_col, discount_col] and c is not None]
-for c in remaining_numeric[:3]:
-    kpi_cols.append((f"Avg {c}", fmt_currency(df_filtered[c].mean())))
+  <section class="section" id="workflow">
+    <div class="wrap">
+      <div class="section-head">
+        <div class="eyebrow">The workflow</div>
+        <h2>Seven steps, one upload</h2>
+        <p>Every stage runs automatically. You can stop at any step, correct a column mapping, or change the detected industry before the dashboard is built.</p>
+      </div>
+      <div class="grid-3">
+        <div class="feat"><div class="ic">①</div><h3>Upload</h3><p>Drag in a spreadsheet. AutoDash reads rows, columns, sheets, and file size instantly.</p></div>
+        <div class="feat"><div class="ic">②</div><h3>Inspect</h3><p>A data health report flags missing values, duplicates, and inconsistent formats before anything is built on top of them.</p></div>
+        <div class="feat"><div class="ic">③</div><h3>Understand</h3><p>Column names and values are matched to business concepts — sales, target, ASM, SKU, distributor — with a confidence level you can correct.</p></div>
+        <div class="feat"><div class="ic">④</div><h3>Generate</h3><p>The right KPIs, charts, and rankings appear automatically. A metric only shows up if your data actually supports it.</p></div>
+        <div class="feat"><div class="ic">⑤</div><h3>Ask</h3><p>Type a question in plain English. AutoDash calculates the answer from your rows, then explains the formula it used.</p></div>
+        <div class="feat"><div class="ic">⑥</div><h3>Export</h3><p>Send the dashboard, the cleaned data, and the underlying calculations to Excel, CSV, or a printable report.</p></div>
+      </div>
+    </div>
+  </section>
 
-# render KPI cards: 4 per row
-cols_per_row = 4
-rows = (len(kpi_cols) + cols_per_row - 1) // cols_per_row
-kpi_idx = 0
-for r in range(rows):
-    cols = st.columns(cols_per_row)
-    for i in range(cols_per_row):
-        if kpi_idx < len(kpi_cols):
-            title, value = kpi_cols[kpi_idx]
-            cols[i].metric(label=title, value=value)
-        else:
-            cols[i].write("")  # empty cell
-        kpi_idx += 1
+  <section class="section" id="features">
+    <div class="wrap">
+      <div class="section-head">
+        <div class="eyebrow">What's inside</div>
+        <h2>Built for the person who owns the spreadsheet, not the data team</h2>
+      </div>
+      <div class="grid-3">
+        <div class="feat"><div class="ic">📊</div><h3>Automatic dashboards</h3><p>Target vs. achievement, trend lines, state and ASM rankings — chosen based on which columns your file actually contains.</p></div>
+        <div class="feat"><div class="ic">💬</div><h3>Ask Your Data</h3><p>"Which ASM has the highest achievement?" gets a calculated answer, not a guess — with the formula shown underneath.</p></div>
+        <div class="feat"><div class="ic">🩺</div><h3>Data health report</h3><p>A transparent score built from missing values, duplicates, and date and numeric consistency — never an arbitrary number.</p></div>
+        <div class="feat"><div class="ic">🔎</div><h3>Column intelligence</h3><p>AutoDash explains what it thinks each column means, and how confident it is, before using it in a calculation.</p></div>
+        <div class="feat"><div class="ic">🎛️</div><h3>Live filters</h3><p>Filter by region, product, or date range and every KPI and chart recalculates from the underlying rows — nothing is cached or faked.</p></div>
+        <div class="feat"><div class="ic">📤</div><h3>Full export</h3><p>Excel workbook with dashboard, cleaned data and data profile sheets, plus CSV, chart images, and a printable report.</p></div>
+      </div>
+    </div>
+  </section>
 
-st.header("Sales Insights (Time Series)")
+  <section class="section" id="industries">
+    <div class="wrap">
+      <div class="section-head">
+        <div class="eyebrow">Industry detection</div>
+        <h2>AutoDash reads your columns and figures out your business</h2>
+        <p>Industry detection changes which dashboard template is used — it never changes or overrides what's actually in your data.</p>
+      </div>
+      <div class="industries">
+        <div class="ind-chip">FMCG</div><div class="ind-chip">Retail</div><div class="ind-chip">E-commerce</div>
+        <div class="ind-chip">Automotive</div><div class="ind-chip">Manufacturing</div><div class="ind-chip">Distribution</div>
+        <div class="ind-chip">General business data</div>
+      </div>
+    </div>
+  </section>
 
-if sales_col and date_col and pd.api.types.is_datetime64_any_dtype(df_filtered[date_col]):
-    freq = st.selectbox("Select time frequency", options=['Daily','Weekly','Monthly','Yearly'], index=2)
-    ts = aggregate_time(df_filtered, date_col, sales_col, freq)
-    fig_ts = px.line(ts, x=date_col, y=sales_col, title=f"{freq} {sales_col} Trend", markers=True)
-    st.plotly_chart(fig_ts, use_container_width=True)
+  <section class="section" id="trust">
+    <div class="wrap trust">
+      <div>
+        <div class="eyebrow">Why trust the numbers</div>
+        <h2>Calculations come from your rows. The AI only explains them.</h2>
+        <div class="trust-list">
+          <div class="row"><span class="chk">✓</span>Every KPI and chart is computed directly from your dataset — nothing is estimated or filled in.</div>
+          <div class="row"><span class="chk">✓</span>If a question needs a column your file doesn't have, AutoDash says so instead of guessing.</div>
+          <div class="row"><span class="chk">✓</span>Every number has an "Explain" view showing the exact formula and rows used.</div>
+          <div class="row"><span class="chk">✓</span>Exports are recalculated at export time, so the workbook always matches the dashboard.</div>
+        </div>
+      </div>
+      <div class="card">
+        <h3 style="margin-bottom:10px;">Explain this number</h3>
+        <div class="kpi" style="border:none; padding:0;">
+          <div class="l">Achievement</div>
+          <div class="v">90.2%</div>
+          <div class="explain on" style="margin-top:10px;">Achievement = Actual Sales ÷ Target × 100<br>₹52.5M ÷ ₹58.2M × 100 = 90.2%<br>Rows used: 52,483</div>
+        </div>
+      </div>
+    </div>
+  </section>
 
-    # month over month / year over year percentage change (if monthly/yearly)
-    if freq in ['Monthly','Yearly']:
-        ts['pct_change'] = ts[sales_col].pct_change()
-        fig_bar = px.bar(ts, x=date_col, y='pct_change', title=f"{freq} % Change in {sales_col}")
-        st.plotly_chart(fig_bar, use_container_width=True)
-else:
-    st.info("Time series charts require both a Sales column and a Date column detected.")
+  <section class="section">
+    <div class="wrap">
+      <div class="cta-band">
+        <div>
+          <h2>Upload your data. AutoDash does the analysis.<br>You stay in control.</h2>
+        </div>
+        <button class="btn btn-primary" onclick="AD.launchApp()">Upload Your Data</button>
+      </div>
+    </div>
+  </section>
 
-st.header("Top & Bottom Insights")
+  <footer class="wrap">
+    <div class="fsub">AutoDash AI — a calculation-first analytics demo. Runs entirely in your browser; your file is never uploaded to a server.</div>
+    <div class="theme-switch" id="themeSwitch">
+      <button data-theme="light" class="active">Light</button>
+      <button data-theme="executive">Executive</button>
+      <button data-theme="dark">Dark</button>
+    </div>
+  </footer>
+</div>
 
-col1, col2 = st.columns([1,2])
-with col1:
-    tb_choice = st.selectbox("Top or Bottom", options=['Top','Bottom'], index=0)
-    tb_kind = st.selectbox("Choose entity", options=['Products','Customers','Regions','Salesperson'], index=0)
-    tb_n = st.slider("N (how many)", min_value=3, max_value=20, value=5)
-with col2:
-    if tb_kind == 'Products' and product_col and sales_col:
-        tb_df = top_bottom(df_filtered, product_col, sales_col, top=(tb_choice=='Top'), n=tb_n)
-        st.subheader(f"{tb_choice} {tb_n} Products by {sales_col}")
-        st.dataframe(tb_df)
-        fig = px.bar(tb_df, x=product_col, y=sales_col, title=f"{tb_choice} {tb_n} Products")
-        st.plotly_chart(fig, use_container_width=True)
-    elif tb_kind == 'Customers' and customer_col and sales_col:
-        tb_df = top_bottom(df_filtered, customer_col, sales_col, top=(tb_choice=='Top'), n=tb_n if tb_n<=50 else 50)
-        st.subheader(f"{tb_choice} {tb_n} Customers by {sales_col}")
-        st.dataframe(tb_df)
-        fig = px.bar(tb_df, x=customer_col, y=sales_col, title=f"{tb_choice} {tb_n} Customers")
-        st.plotly_chart(fig, use_container_width=True)
-    elif tb_kind == 'Regions' and region_col and sales_col:
-        tb_df = top_bottom(df_filtered, region_col, sales_col, top=(tb_choice=='Top'), n=tb_n)
-        st.subheader(f"{tb_choice} {tb_n} Regions by {sales_col}")
-        st.dataframe(tb_df)
-        fig = px.bar(tb_df, x=region_col, y=sales_col, title=f"{tb_choice} {tb_n} Regions")
-        st.plotly_chart(fig, use_container_width=True)
-    elif tb_kind == 'Salesperson' and salesperson_col and sales_col:
-        tb_df = top_bottom(df_filtered, salesperson_col, sales_col, top=(tb_choice=='Top'), n=tb_n)
-        st.subheader(f"{tb_choice} {tb_n} Salespersons by {sales_col}")
-        st.dataframe(tb_df)
-        fig = px.bar(tb_df, x=salesperson_col, y=sales_col, title=f"{tb_choice} {tb_n} Salespersons")
-        st.plotly_chart(fig, use_container_width=True)
-    else:
-        st.warning("Required columns for this insight are not present in data.")
+<!-- ============ APP ============ -->
+<div id="appview">
+  <div class="steps-rail wrap" id="stepsRail"></div>
 
-st.header("Sales Breakdown")
+  <div class="app-main wrap">
+    <div class="app-grid">
+      <div class="side-nav" id="sideNav"></div>
 
-breakdown_cols = [region_col, city_col, category_col, product_col]
-for col_name in breakdown_cols:
-    if col_name:
-        st.subheader(f"Sales by {col_name}")
-        grp = df_filtered.groupby(col_name)[sales_col].sum().reset_index().sort_values(by=sales_col, ascending=False)
-        fig = px.pie(grp.head(10), names=col_name, values=sales_col, title=f"Top 10 {col_name} by Sales")
-        st.plotly_chart(fig, use_container_width=True)
-        fig_bar = px.bar(grp.head(20), x=col_name, y=sales_col, title=f"{col_name} - Top 20 by Sales")
-        st.plotly_chart(fig_bar, use_container_width=True)
+      <div>
+        <!-- STEP: UPLOAD -->
+        <section class="panel" data-panel="upload">
+          <div class="hint-box">Supported formats: .xlsx, .xls, .csv. Your file is parsed in this browser tab and is never sent to a server.</div>
+          <div class="upload-zone" id="dropZone">
+            <div class="upload-icon">📁</div>
+            <h3>Drag and drop your file here</h3>
+            <p>or click to browse</p>
+            <input type="file" id="fileInput" accept=".csv,.xlsx,.xls">
+            <div class="filetypes"><span>.XLSX</span><span>.XLS</span><span>.CSV</span></div>
+          </div>
+          <div id="uploadError"></div>
+          <div id="fileSummary"></div>
+          <div style="margin-top:24px; display:flex; justify-content:flex-end;">
+            <button class="btn btn-primary" id="toInspectBtn" disabled onclick="AD.goStep('inspect')">Inspect data</button>
+          </div>
+        </section>
 
-st.header("Customer Insights (RFM & AOV)")
+        <!-- STEP: INSPECT -->
+        <section class="panel" data-panel="inspect">
+          <div class="card">
+            <h3>Data Health Report</h3>
+            <div id="healthCard"></div>
+          </div>
+          <div class="card">
+            <h3>Column Intelligence</h3>
+            <div class="tbl-scroll"><table class="data-tbl" id="colIntelTbl"></table></div>
+          </div>
+          <div style="margin-top:24px; display:flex; justify-content:flex-end; gap:10px;">
+            <button class="btn" onclick="AD.goStep('upload')">Back</button>
+            <button class="btn btn-primary" onclick="AD.goStep('industry')">Continue</button>
+          </div>
+        </section>
 
-if customer_col and date_col and sales_col:
-    # Recency: days since last order per customer
-    latest_date = df_filtered[date_col].max()
-    rfm = df_filtered.groupby(customer_col).agg({
-        date_col: lambda x: (latest_date - x.max()).days,
-        'OrderID' if 'OrderID' in df_filtered.columns else date_col: 'count',
-        sales_col: 'sum'
-    }).rename(columns={date_col: 'Recency', ('OrderID' if 'OrderID' in df_filtered.columns else date_col): 'Frequency', sales_col: 'Monetary'}).reset_index()
-    # RFM scoring (simple quintiles)
-    rfm['R_rank'] = pd.qcut(rfm['Recency'], 5, labels=[5,4,3,2,1]).astype(int)  # lower recency -> better -> invert
-    rfm['F_rank'] = pd.qcut(rfm['Frequency'].rank(method='first'), 5, labels=[1,2,3,4,5]).astype(int)
-    rfm['M_rank'] = pd.qcut(rfm['Monetary'], 5, labels=[1,2,3,4,5]).astype(int)
-    rfm['RFM_Score'] = rfm['R_rank']*100 + rfm['F_rank']*10 + rfm['M_rank']
-    rfm['AOV'] = rfm['Monetary'] / rfm['Frequency'].replace(0, np.nan)
-    st.dataframe(rfm.sort_values('Monetary', ascending=False).head(10))
-    # Top customer contribution
-    total_sales = df_filtered[sales_col].sum()
-    top_customers = rfm.sort_values('Monetary', ascending=False).head(10)
-    top_customers['Contribution%'] = top_customers['Monetary'] / total_sales * 100
-    st.subheader("Top customers contribution % (Top 10)")
-    st.dataframe(top_customers[[customer_col, 'Monetary','Contribution%']])
-else:
-    st.info("Customer insights require Customer, Date, and Sales columns.")
+        <!-- STEP: INDUSTRY -->
+        <section class="panel" data-panel="industry">
+          <div class="card">
+            <h3>Detected Industry</h3>
+            <div class="industry-card">
+              <div class="ind-main">
+                <div class="ic" id="indIcon">📦</div>
+                <div>
+                  <h3 id="indName" style="font-size:19px;">—</h3>
+                  <div id="indConfText" style="font-size:13px; color:var(--text-dim);"></div>
+                  <div class="conf-bar" style="width:220px;"><i id="indConfBar" style="width:0%;"></i></div>
+                </div>
+              </div>
+              <select id="indChange" class="role-select" style="padding:9px 12px;" onchange="AD.changeIndustry(this.value)"></select>
+            </div>
+            <p class="reason" id="indReason"></p>
+          </div>
+          <div style="margin-top:24px; display:flex; justify-content:flex-end; gap:10px;">
+            <button class="btn" onclick="AD.goStep('inspect')">Back</button>
+            <button class="btn btn-primary" onclick="AD.goStep('dashboard')">Build dashboard</button>
+          </div>
+        </section>
 
-st.header("Profit & Discount Analysis")
+        <!-- STEP: DASHBOARD -->
+        <section class="panel" data-panel="dashboard">
+          <div class="db-header">
+            <div>
+              <h2 id="dbTitle" style="font-size:22px;">Dashboard</h2>
+              <div class="scope-note" id="dbSubtitle"></div>
+            </div>
+          </div>
+          <div class="filters-row" id="filtersRow"></div>
+          <div class="kpi-row" id="kpiRow"></div>
+          <div class="charts-grid">
+            <div class="card chart-card">
+              <h3>Trend <button class="btn btn-sm png-btn" onclick="AD.exportChartPNG('trendChart')">PNG</button></h3>
+              <div class="chart-sub" id="trendSub"></div>
+              <div class="chart-wrap"><canvas id="trendChart"></canvas></div>
+            </div>
+            <div class="card chart-card">
+              <h3>By category <button class="btn btn-sm png-btn" onclick="AD.exportChartPNG('catChart')">PNG</button></h3>
+              <div class="chart-sub" id="catSub"></div>
+              <div class="chart-wrap"><canvas id="catChart"></canvas></div>
+            </div>
+          </div>
+          <div class="card">
+            <h3 id="rankTitle">Ranking</h3>
+            <div class="tbl-scroll"><table class="data-tbl" id="rankTbl"></table></div>
+          </div>
+          <div class="card">
+            <h3>Business insights</h3>
+            <div id="insightsBox"></div>
+          </div>
+        </section>
 
-if profit_col:
-    st.subheader("Profit Percentiles")
-    profiles = df_filtered[profit_col].describe(percentiles=[.1,.25,.5,.75,.9]).to_frame().T
-    st.table(profiles := profiles[['10%','25%','50%','75%','90%']].rename(columns={'10%':'P10','25%':'P25','50%':'Median','75%':'P75','90%':'P90'}) if False else profiles)  # to keep consistent table rendering
+        <!-- STEP: ASK -->
+        <section class="panel" data-panel="ask">
+          <div class="hint-box">AutoDash answers by calculating directly from your data — it never estimates a figure. If a question needs a column your file doesn't have, it will say so.</div>
+          <div class="chat-shell">
+            <div class="chat-log" id="chatLog"></div>
+            <div class="chat-suggest" id="chatSuggest"></div>
+            <div class="chat-input-row">
+              <input type="text" id="chatInput" placeholder="e.g. Which state had the highest sales?" onkeydown="if(event.key==='Enter')AD.askSubmit();">
+              <button class="btn btn-primary btn-sm" onclick="AD.askSubmit()">Ask</button>
+            </div>
+          </div>
+        </section>
 
-    # profit heatmap if product/category exist
-    if product_col and category_col:
-        pivot = df_filtered.pivot_table(values=profit_col, index=category_col, columns=product_col, aggfunc='sum', fill_value=0)
-        fig = px.imshow(pivot, title="Profit heatmap (Category x Product)")
-        st.plotly_chart(fig, use_container_width=True)
-    else:
-        # try region x product
-        if region_col and product_col:
-            pivot = df_filtered.pivot_table(values=profit_col, index=region_col, columns=product_col, aggfunc='sum', fill_value=0)
-            fig = px.imshow(pivot, title="Profit heatmap (Region x Product)")
-            st.plotly_chart(fig, use_container_width=True)
+        <!-- STEP: EXPLORE -->
+        <section class="panel" data-panel="explore">
+          <div class="card">
+            <h3>Explore Data</h3>
+            <div class="explorer-toolbar">
+              <input type="text" id="explorerSearch" placeholder="Search rows..." oninput="AD.explorerRender()">
+              <div class="scope-note" id="explorerCount"></div>
+            </div>
+            <div class="tbl-scroll"><table class="data-tbl" id="explorerTbl"></table></div>
+            <div class="pager">
+              <button class="btn btn-sm" onclick="AD.explorerPage(-1)">Prev</button>
+              <span id="pagerLabel"></span>
+              <button class="btn btn-sm" onclick="AD.explorerPage(1)">Next</button>
+            </div>
+          </div>
+          <div class="card">
+            <h3>Data Profile</h3>
+            <div class="tbl-scroll"><table class="data-tbl" id="profileTbl"></table></div>
+          </div>
+        </section>
 
-if discount_col and sales_col:
-    st.subheader("Discount vs Sales / Profit")
-    fig = px.scatter(df_filtered, x=discount_col, y=sales_col, hover_data=[product_col, customer_col], trendline="ols" if len(df_filtered)>10 else None, title="Discount vs Sales")
-    st.plotly_chart(fig, use_container_width=True)
-    if profit_col:
-        fig2 = px.scatter(df_filtered, x=discount_col, y=profit_col, hover_data=[product_col], title="Discount vs Profit")
-        st.plotly_chart(fig2, use_container_width=True)
+        <!-- STEP: EXPORT -->
+        <section class="panel" data-panel="export">
+          <div class="export-grid">
+            <div class="export-card">
+              <h3>Excel workbook</h3>
+              <p>Dashboard summary, KPI calculations, cleaned data, and data profile in one formatted .xlsx file.</p>
+              <button class="btn btn-primary btn-sm" onclick="AD.exportExcel()">Export Excel</button>
+              <div class="export-status" id="statusExcel"></div>
+            </div>
+            <div class="export-card">
+              <h3>CSV — filtered view</h3>
+              <p>Exports exactly the rows currently matching your dashboard filters.</p>
+              <button class="btn btn-sm" onclick="AD.exportCSV(true)">Export filtered CSV</button>
+              <div class="export-status" id="statusCsvFiltered"></div>
+            </div>
+            <div class="export-card">
+              <h3>CSV — full dataset</h3>
+              <p>Exports every row from the uploaded file, unfiltered.</p>
+              <button class="btn btn-sm" onclick="AD.exportCSV(false)">Export full CSV</button>
+              <div class="export-status" id="statusCsvFull"></div>
+            </div>
+            <div class="export-card">
+              <h3>Printable report</h3>
+              <p>Opens your browser's print dialog with a presentation-ready version of the dashboard — save as PDF from there.</p>
+              <button class="btn btn-sm" onclick="window.print()">Print / Save as PDF</button>
+            </div>
+          </div>
+        </section>
+      </div>
+    </div>
+  </div>
+</div>
 
-st.header("Sales by Place")
+<script>
+/* ===================================================================
+   AUTODASH AI — client-side analysis engine
+   Everything below runs in the browser. No server, no LLM call:
+   the "Ask Your Data" feature is a deterministic rule-based parser,
+   not a language model — every number it returns is a real
+   calculation over the parsed rows, shown with its formula.
+=================================================================== */
+const AD = (function(){
 
-if region_col:
-    region_sum = df_filtered.groupby(region_col)[sales_col].sum().reset_index().sort_values(sales_col, ascending=False)
-    fig = px.bar(region_sum, x=region_col, y=sales_col, title="Sales by Region")
-    st.plotly_chart(fig, use_container_width=True)
-if city_col:
-    city_sum = df_filtered.groupby(city_col)[sales_col].sum().reset_index().sort_values(sales_col, ascending=False)
-    fig = px.bar(city_sum.head(30), x=city_col, y=sales_col, title="Top Cities by Sales")
-    st.plotly_chart(fig, use_container_width=True)
+const STATE = {
+  rows:[], headers:[], columns:{}, roleOverrides:{}, industry:null,
+  filters:{}, fileMeta:{}, explorerPage:0, explorerSort:null, charts:{},
+  kpis:[], insights:[], demo:false
+};
 
-st.header("Advanced Insights (Forecasting & Feature Importance)")
+const STEPS = ['upload','inspect','industry','dashboard','ask','explore','export'];
+const STEP_LABELS = {upload:'Upload',inspect:'Inspect',industry:'Industry',dashboard:'Dashboard',ask:'Ask data',explore:'Explore',export:'Export'};
+let currentStep = 'upload';
 
-# Forecasting: Aggregate monthly sales and apply linear regression to predict next 3 months
-if sales_col and date_col and pd.api.types.is_datetime64_any_dtype(df_filtered[date_col]):
-    try:
-        monthly = df_filtered.set_index(date_col).resample('M')[sales_col].sum().reset_index().dropna()
-        if len(monthly) >= 6:
-            monthly['ds_ord'] = (monthly[date_col].dt.year*12 + monthly[date_col].dt.month).astype(int)
-            X = monthly[['ds_ord']]
-            y = monthly[sales_col].values
-            lr = LinearRegression()
-            lr.fit(X, y)
-            last_ord = monthly['ds_ord'].max()
-            future = []
-            for i in range(1,4):  # next 3 months
-                future_ord = last_ord + i
-                future.append({'ds_ord': future_ord})
-            future_df = pd.DataFrame(future)
-            preds = lr.predict(future_df[['ds_ord']])
-            # prepare display
-            future_dates = []
-            last_date = monthly[date_col].max()
-            for i in range(1,4):
-                future_dates.append((last_date + relativedelta(months=i)).replace(day=1))
-            forecast_df = pd.DataFrame({date_col: future_dates, 'ForecastSales': preds})
-            combined = pd.concat([monthly[[date_col,sales_col]], forecast_df.rename(columns={'ForecastSales': sales_col})], ignore_index=True, sort=False)
-            fig = go.Figure()
-            fig.add_trace(go.Scatter(x=monthly[date_col], y=monthly[sales_col], mode='lines+markers', name='Historical'))
-            fig.add_trace(go.Scatter(x=forecast_df[date_col], y=forecast_df['ForecastSales'], mode='lines+markers', name='Forecast'))
-            fig.update_layout(title="Sales Forecast (Linear Regression) - Next 3 months")
-            st.plotly_chart(fig, use_container_width=True)
-            st.subheader("Forecast table")
-            st.dataframe(forecast_df)
-        else:
-            st.info("Not enough monthly data points (need >=6) for reliable forecasting.")
-    except Exception as e:
-        st.error(f"Forecasting failed: {e}")
-else:
-    st.info("Forecasting requires Sales and Date columns.")
+/* ---------- semantic dictionary ---------- */
+const ROLE_SYNONYMS = {
+  date:['date','month','period','day','mth','transaction date','bill date','order date'],
+  sales:['sales','revenue','amount','net amt','net sales','ach','achievement','turnover','value','gmv'],
+  target:['target','tgt','goal','budget'],
+  quantity:['qty','quantity','units','volume','nos','no. of'],
+  product:['sku','product','item','brand','model','variant'],
+  salesperson:['asm','executive','rep','salesman','agent','manager','employee','tse','so '],
+  distributor:['distributor','dealer','retailer','party','customer','client','account','vendor'],
+  region:['region','state','city','zone','territory','area','location','branch','district'],
+  cost:['cost','expense','cogs'],
+  stock:['stock','inventory','opening','closing'],
+  order:['order','invoice','bill no','transaction id','order id'],
+  price:['price','rate','unit price','mrp']
+};
+const ROLE_LABELS = {date:'Date / Period',sales:'Sales / Revenue',target:'Target',quantity:'Quantity',product:'Product',
+  salesperson:'Sales Manager',distributor:'Distributor / Customer',region:'Geography',cost:'Cost',stock:'Stock',order:'Order / Transaction',price:'Price',none:'Not mapped',text:'Text'};
 
-# Feature Importance: attempt if enough numeric features
-st.subheader("Feature Importance for Sales (if applicable)")
-try:
-    cand_features = []
-    df_model = df_filtered.copy()
-    # Prepare candidate numeric & categorical features excluding target and identifiers
-    for c in df_model.columns:
-        if c in [sales_col, profit_col, discount_col, date_col, 'OrderID', customer_col, product_col]:
-            continue
-        if pd.api.types.is_numeric_dtype(df_model[c]):
-            cand_features.append(c)
-    # For categorical features, encode top N categories
-    cat_to_encode = []
-    for c in [product_col, category_col, region_col, city_col, salesperson_col]:
-        if c and c in df_model.columns:
-            # include if cardinality reasonable
-            if df_model[c].nunique() <= 200:
-                cat_to_encode.append(c)
-    if not cand_features and not cat_to_encode:
-        st.info("No suitable features found for importance modeling.")
-    else:
-        # build feature matrix
-        Xf = pd.DataFrame(index=df_model.index)
-        for c in cand_features:
-            Xf[c] = df_model[c].fillna(df_model[c].median())
-        # ordinal encode categorical columns
-        if cat_to_encode:
-            oe = OrdinalEncoder(handle_unknown='use_encoded_value', unknown_value=-1)
-            try:
-                enc = oe.fit_transform(df_model[cat_to_encode].fillna('NA'))
-                enc_df = pd.DataFrame(enc, columns=cat_to_encode, index=df_model.index)
-                Xf = pd.concat([Xf, enc_df], axis=1)
-            except Exception:
-                # fallback: simple factorize
-                for c in cat_to_encode:
-                    Xf[c] = pd.factorize(df_model[c].fillna('NA'))[0]
-        # drop rows where target missing
-        model_df = pd.concat([Xf, df_model[sales_col]], axis=1).dropna()
-        if model_df.shape[0] > 50 and model_df.shape[1] > 1:
-            X = model_df.drop(columns=[sales_col])
-            y = model_df[sales_col]
-            rf = RandomForestRegressor(n_estimators=100, random_state=42)
-            rf.fit(X, y)
-            importances = pd.Series(rf.feature_importances_, index=X.columns).sort_values(ascending=False)
-            fig = px.bar(importances.reset_index().rename(columns={'index':'feature',0:'importance'}), x='feature', y=0, title='Feature Importance (RandomForest)')
-            st.plotly_chart(fig, use_container_width=True)
-            st.dataframe(importances.head(20).reset_index().rename(columns={'index':'feature',0:'importance'}))
-        else:
-            st.info("Not enough data or features to compute feature importance (need >50 rows and >1 feature).")
-except Exception as e:
-    st.error(f"Feature importance failed: {e}")
+function norm(s){return String(s||'').toLowerCase().trim();}
 
-st.header("Export & Download")
-with st.expander("Download filtered dataset"):
-    csv = df_filtered.to_csv(index=False)
-    st.download_button("Download filtered CSV", data=csv, file_name="filtered_data.csv", mime="text/csv")
+/* ---------- CSV parsing ---------- */
+function parseCSV(text){
+  const rows = []; let row = []; let field = ''; let inQuotes = false;
+  for(let i=0;i<text.length;i++){
+    const c = text[i];
+    if(inQuotes){
+      if(c === '"'){
+        if(text[i+1] === '"'){ field += '"'; i++; } else { inQuotes = false; }
+      } else field += c;
+    } else {
+      if(c === '"') inQuotes = true;
+      else if(c === ','){ row.push(field); field=''; }
+      else if(c === '\n'){ row.push(field); rows.push(row); row=[]; field=''; }
+      else if(c === '\r'){ /* skip */ }
+      else field += c;
+    }
+  }
+  if(field.length || row.length){ row.push(field); rows.push(row); }
+  return rows.filter(r => r.some(v => String(v).trim() !== ''));
+}
 
-with st.expander("Download RFM (if available)"):
-    try:
-        if 'rfm' in locals():
-            st.download_button("Download RFM CSV", data=rfm.to_csv(index=False), file_name="rfm.csv", mime="text/csv")
-        else:
-            st.write("RFM not generated (requires Customer, Date, Sales columns).")
-    except Exception as e:
-        st.write("Error preparing RFM download:", e)
+function rowsFromAOA(aoa){
+  if(!aoa.length) return {headers:[], rows:[]};
+  const headers = aoa[0].map((h,i)=> String(h||('Column'+(i+1))).trim());
+  const rows = aoa.slice(1).map(r=>{
+    const o = {};
+    headers.forEach((h,i)=>{ o[h] = r[i] === undefined ? '' : r[i]; });
+    return o;
+  });
+  return {headers, rows};
+}
 
-st.markdown("---")
-st.markdown("### Notes")
-st.markdown("""
-- This automated dashboard attempts to be flexible: it will only show widgets for columns that exist.
-- For best results, upload a cleaned dataset where Sales, Date, Product, Customer columns are present and properly formatted.
-- Forecasting here uses a simple linear regression on monthly aggregates (quick baseline). For production you may want to use more advanced time-series models (Prophet, ARIMA, or ML-based pipelines).
-- Feature importance uses a RandomForest baseline; interpret carefully and consider cross-validation for robustness.
-""")
+function handleFile(file){
+  const name = file.name; const ext = name.split('.').pop().toLowerCase();
+  showError('');
+  if(ext === 'csv'){
+    const reader = new FileReader();
+    reader.onload = e => {
+      try{
+        const aoa = parseCSV(String(e.target.result));
+        const {headers, rows} = rowsFromAOA(aoa);
+        onParsed(file, headers, rows, 1);
+      }catch(err){ showError("This file doesn't contain usable data. (" + err.message + ")"); }
+    };
+    reader.onerror = () => showError("This file doesn't contain usable data.");
+    reader.readAsText(file);
+  } else if(ext === 'xlsx' || ext === 'xls'){
+    if(typeof XLSX === 'undefined'){ showError('The spreadsheet engine failed to load. Try a .csv file instead, or reload the page.'); return; }
+    const reader = new FileReader();
+    reader.onload = e => {
+      try{
+        const wb = XLSX.read(new Uint8Array(e.target.result), {type:'array', cellDates:true});
+        const sheetName = wb.SheetNames[0];
+        const aoa = XLSX.utils.sheet_to_json(wb.Sheets[sheetName], {header:1, raw:true, defval:''});
+        const {headers, rows} = rowsFromAOA(aoa);
+        onParsed(file, headers, rows, wb.SheetNames.length);
+      }catch(err){ showError("We couldn't read this spreadsheet. Please confirm it isn't password-protected or corrupted."); }
+    };
+    reader.onerror = () => showError("We couldn't read this spreadsheet.");
+    reader.readAsArrayBuffer(file);
+  } else {
+    showError('Unsupported file type. Please upload a .xlsx, .xls, or .csv file.');
+  }
+}
+
+function showError(msg){
+  document.getElementById('uploadError').innerHTML = msg ? `<div class="err-box">${esc(msg)}</div>` : '';
+}
+
+function onParsed(file, headers, rows, sheetCount){
+  if(!headers.length || !rows.length){ showError("This file doesn't contain usable data."); return; }
+  if(headers.length < 2){ showError("We couldn't identify column headers. Please check the first row of your file contains column names."); return; }
+  STATE.rows = rows; STATE.headers = headers; STATE.roleOverrides = {};
+  STATE.fileMeta = {name:file.name, size:file.size, sheets:sheetCount, rowCount:rows.length, colCount:headers.length};
+  profileColumns();
+  detectAllRoles();
+  detectIndustry();
+  initFilters();
+  renderFileSummary();
+  renderHealth();
+  renderColIntel();
+  renderIndustry();
+  document.getElementById('toInspectBtn').disabled = false;
+  markStepDone('upload');
+}
+
+/* ---------- column profiling ---------- */
+function profileColumns(){
+  const cols = {};
+  STATE.headers.forEach(h=>{
+    const vals = STATE.rows.map(r=>r[h]);
+    const nonEmpty = vals.filter(v => v !== '' && v !== null && v !== undefined);
+    const type = inferType(nonEmpty);
+    const profile = {name:h, type, total:vals.length, nonEmpty:nonEmpty.length,
+      missingPct: vals.length ? 100*(vals.length-nonEmpty.length)/vals.length : 0};
+    if(type === 'numeric'){
+      const nums = nonEmpty.map(toNumber).filter(n=>n!==null);
+      profile.validPct = nonEmpty.length ? 100*nums.length/nonEmpty.length : 0;
+      profile.min = nums.length?Math.min(...nums):null; profile.max = nums.length?Math.max(...nums):null;
+      profile.sum = nums.reduce((a,b)=>a+b,0); profile.avg = nums.length?profile.sum/nums.length:0;
+      profile.unique = new Set(nums).size;
+    } else if(type === 'date'){
+      const dates = nonEmpty.map(toDate).filter(d=>d);
+      profile.validPct = nonEmpty.length ? 100*dates.length/nonEmpty.length : 0;
+      profile.min = dates.length?new Date(Math.min(...dates)):null; profile.max = dates.length?new Date(Math.max(...dates)):null;
+      profile.unique = new Set(dates.map(d=>d.getTime())).size;
+    } else {
+      const uniqSet = new Set(nonEmpty.map(v=>norm(v)));
+      profile.unique = uniqSet.size;
+      profile.uniqueValues = Array.from(new Set(nonEmpty.map(v=>String(v).trim()))).slice(0,500);
+      profile.isCategory = profile.unique <= Math.max(40, nonEmpty.length*0.5) && profile.unique < 400;
+      profile.type = profile.isCategory ? 'category' : 'text';
+      // casing/trim consistency
+      const canon = {};
+      nonEmpty.forEach(v=>{ const k = norm(v); canon[k] = canon[k]||{}; canon[k][String(v).trim()]=(canon[k][String(v).trim()]||0)+1; });
+      let inconsistent = 0, totalVariants=0;
+      Object.values(canon).forEach(variants=>{ const keys=Object.keys(variants); totalVariants += keys.length; if(keys.length>1) inconsistent += keys.length-1; });
+      profile.consistencyPct = nonEmpty.length ? 100 - (100*inconsistent/Math.max(1,nonEmpty.length)) : 100;
+    }
+    profile.sampleValues = nonEmpty.slice(0,4).map(v=>String(v));
+    cols[h] = profile;
+  });
+  STATE.columns = cols;
+}
+
+function inferType(vals){
+  if(!vals.length) return 'text';
+  const sample = vals.slice(0, Math.min(200, vals.length));
+  let dateHits=0, numHits=0;
+  sample.forEach(v=>{
+    if(v instanceof Date && !isNaN(v)) dateHits++;
+    else if(toDate(v)) dateHits++;
+    if(toNumber(v)!==null) numHits++;
+  });
+  if(dateHits/sample.length > 0.7) return 'date';
+  if(numHits/sample.length > 0.7) return 'numeric';
+  return 'category'; // refined later to category/text
+}
+function toNumber(v){
+  if(v instanceof Date) return null;
+  if(typeof v === 'number') return isFinite(v)?v:null;
+  if(v===''||v===null||v===undefined) return null;
+  const s = String(v).replace(/[₹$,%\s]/g,'').replace(/^\((.*)\)$/,'-$1');
+  if(s==='' || isNaN(Number(s))) return null;
+  return Number(s);
+}
+function toDate(v){
+  if(v instanceof Date && !isNaN(v)) return v;
+  if(typeof v === 'number') return null;
+  if(!v) return null;
+  const s = String(v).trim();
+  if(/^\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}$/.test(s)){
+    const parts = s.split(/[\/\-]/).map(Number);
+    let [a,b,c] = parts;
+    if(c<100) c += 2000;
+    const d = new Date(c, (a>12?a:b)-1 >=0 ? (a>12? b-1 : a-1) : 0, a>12?b:a);
+    // prefer dd-mm-yyyy for ambiguous
+    const dd = parts[0], mm = parts[1], yyyy = c;
+    const d2 = new Date(yyyy, mm-1, dd);
+    if(!isNaN(d2) && mm<=12 && dd<=31) return d2;
+  }
+  const d = new Date(s);
+  if(!isNaN(d) && s.length>=6 && /\d/.test(s)) return d;
+  return null;
+}
+
+/* ---------- semantic role detection ---------- */
+function detectAllRoles(){
+  STATE.headers.forEach(h=>{
+    const col = STATE.columns[h];
+    const hl = norm(h);
+    let best = {role:'none', confidence:'low'};
+    for(const role in ROLE_SYNONYMS){
+      for(const syn of ROLE_SYNONYMS[role]){
+        if(hl === syn){ best = {role, confidence:'high'}; }
+      }
+    }
+    if(best.role === 'none'){
+      for(const role in ROLE_SYNONYMS){
+        for(const syn of ROLE_SYNONYMS[role]){
+          if(hl.includes(syn)){ best = {role, confidence:'medium'}; }
+        }
+      }
+    }
+    if(best.role === 'none'){
+      if(col.type === 'date') best = {role:'date', confidence:'low'};
+      else if(col.type === 'numeric') best = {role:'sales', confidence:'low'};
+      else if(col.type === 'category') best = {role:'region', confidence:'low'};
+    }
+    col.role = best.role; col.roleConfidence = best.confidence;
+  });
+}
+function effectiveRole(h){ return STATE.roleOverrides[h] || STATE.columns[h].role; }
+
+/* ---------- industry detection ---------- */
+const INDUSTRY_DEFS = {
+  fmcg:{label:'FMCG', icon:'🧴', weights:{product:2,salesperson:2,distributor:2,target:2,sales:1,region:1}, max:10},
+  retail:{label:'Retail', icon:'🛍️', weights:{product:2,region:2,sales:1,order:1}, max:6},
+  ecommerce:{label:'E-commerce', icon:'🛒', weights:{order:3,distributor:1,sales:1,product:1}, max:6},
+  automotive:{label:'Automotive', icon:'🚗', weights:{product:2,distributor:2,sales:1,region:1}, max:6},
+  manufacturing:{label:'Manufacturing', icon:'🏭', weights:{stock:3,cost:2,quantity:1}, max:6},
+  distribution:{label:'Distribution / Logistics', icon:'🚚', weights:{distributor:2,stock:2,region:1,order:1}, max:6},
+  general:{label:'General business data', icon:'📈', weights:{sales:1,quantity:1,region:1}, max:3}
+};
+function detectIndustry(){
+  const rolesPresent = {};
+  STATE.headers.forEach(h=>{ const r = effectiveRole(h); rolesPresent[r] = (rolesPresent[r]||0)+1; });
+  let scores = {};
+  for(const key in INDUSTRY_DEFS){
+    const def = INDUSTRY_DEFS[key]; let s=0;
+    for(const role in def.weights){ if(rolesPresent[role]) s += def.weights[role]; }
+    scores[key] = Math.min(100, Math.round(100*s/def.max));
+  }
+  let best = Object.keys(scores).reduce((a,b)=> scores[a]>=scores[b]?a:b);
+  if(scores[best] < 35) best = 'general';
+  const matched = Object.keys(INDUSTRY_DEFS[best].weights).filter(r=>rolesPresent[r]);
+  const matchedCols = matched.map(role => STATE.headers.filter(h=>effectiveRole(h)===role)[0]).filter(Boolean);
+  STATE.industry = {key:best, confidence:scores[best], matchedRoles:matched, matchedCols};
+}
+function changeIndustry(key){
+  STATE.industry = {...INDUSTRY_DEFS[key] ? {key, confidence:100, matchedRoles:Object.keys(INDUSTRY_DEFS[key].weights), matchedCols:[]} : STATE.industry};
+  renderIndustry();
+}
+
+/* ---------- filters ---------- */
+function initFilters(){
+  STATE.filters = {};
+  const dateCol = primaryCol('date');
+  if(dateCol){
+    const prof = STATE.columns[dateCol];
+    if(prof.min && prof.max){ STATE.filters.dateCol = dateCol; STATE.filters.start = prof.min; STATE.filters.end = prof.max; }
+  }
+  STATE.filters.cats = {};
+}
+function primaryCol(role, exclude){
+  const cands = STATE.headers.filter(h => effectiveRole(h)===role && h!==exclude);
+  if(!cands.length) return null;
+  cands.sort((a,b)=> STATE.columns[b].nonEmpty - STATE.columns[a].nonEmpty);
+  return cands[0];
+}
+function categoryCols(){
+  return STATE.headers.filter(h => STATE.columns[h].type === 'category' && ['region','product','salesperson','distributor'].includes(effectiveRole(h)));
+}
+function getFilteredRows(){
+  let rows = STATE.rows;
+  const f = STATE.filters;
+  if(f.dateCol && (f.start || f.end)){
+    rows = rows.filter(r=>{
+      const d = toDate(r[f.dateCol]); if(!d) return false;
+      if(f.start && d < f.start) return false;
+      if(f.end && d > f.end) return false;
+      return true;
+    });
+  }
+  if(f.cats){
+    for(const col in f.cats){
+      const v = f.cats[col];
+      if(v && v !== '__all__') rows = rows.filter(r => String(r[col]).trim() === v);
+    }
+  }
+  return rows;
+}
+
+/* ---------- health score ---------- */
+function computeHealth(){
+  const totalCells = STATE.rows.length * STATE.headers.length;
+  let missingCells = 0;
+  STATE.headers.forEach(h=>{ missingCells += Math.round(STATE.columns[h].missingPct/100 * STATE.rows.length); });
+  const missingPct = totalCells ? 100*missingCells/totalCells : 0;
+
+  const seen = new Set(); let dup = 0;
+  STATE.rows.forEach(r=>{ const key = STATE.headers.map(h=>r[h]).join('|'); if(seen.has(key)) dup++; else seen.add(key); });
+  const dupPct = STATE.rows.length ? 100*dup/STATE.rows.length : 0;
+
+  const dateCols = STATE.headers.filter(h=>STATE.columns[h].type==='date');
+  const dateCons = dateCols.length ? dateCols.reduce((a,h)=>a+STATE.columns[h].validPct,0)/dateCols.length : 100;
+
+  const numCols = STATE.headers.filter(h=>STATE.columns[h].type==='numeric');
+  const numCons = numCols.length ? numCols.reduce((a,h)=>a+STATE.columns[h].validPct,0)/numCols.length : 100;
+
+  const catCols = STATE.headers.filter(h=>STATE.columns[h].type==='category');
+  const catCons = catCols.length ? catCols.reduce((a,h)=>a+(STATE.columns[h].consistencyPct||100),0)/catCols.length : 100;
+
+  const score = Math.round((100-missingPct)*0.25 + (100-dupPct)*0.2 + dateCons*0.2 + numCons*0.2 + catCons*0.15);
+  return {score:Math.max(0,Math.min(100,score)), missingPct, dupPct, dateCons, numCons, catCons};
+}
+
+/* ================= RENDERERS ================= */
+function esc(s){ return String(s).replace(/[&<>"]/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
+function fmtNum(n){ if(n===null||n===undefined||isNaN(n)) return '—'; const abs=Math.abs(n);
+  if(abs>=10000000) return (n/10000000).toFixed(2)+'Cr';
+  if(abs>=100000) return (n/100000).toFixed(2)+'L';
+  if(abs>=1000) return (n/1000).toFixed(1)+'K';
+  return Math.round(n*100)/100 + '';
+}
+function fmtFull(n){ if(n===null||n===undefined||isNaN(n)) return '—'; return Math.round(n).toLocaleString('en-IN'); }
+
+function renderFileSummary(){
+  const m = STATE.fileMeta; const sizeKb = (m.size/1024).toFixed(1);
+  const dateCol = primaryCol('date'); let dateRangeTxt = '';
+  if(dateCol && STATE.columns[dateCol].min){
+    const mo = Math.max(1, Math.round((STATE.columns[dateCol].max - STATE.columns[dateCol].min)/(1000*3600*24*30)));
+    dateRangeTxt = `<div>Date range: <b>~${mo} month${mo===1?'':'s'}</b></div>`;
+  }
+  document.getElementById('fileSummary').innerHTML = `
+    <div class="file-summary">
+      <div class="fname">📄 ${esc(m.name)}</div>
+      <div class="meta">
+        <div>Rows: <b>${m.rowCount.toLocaleString()}</b></div>
+        <div>Columns: <b>${m.colCount}</b></div>
+        <div>File size: <b>${sizeKb} KB</b></div>
+        <div>Sheets: <b>${m.sheets}</b></div>
+        ${dateRangeTxt}
+      </div>
+    </div>`;
+}
+
+function renderHealth(){
+  const h = computeHealth();
+  const r = 60, c = 2*Math.PI*r, off = c*(1-h.score/100);
+  const color = h.score>=85?'var(--pos)':h.score>=65?'var(--accent-2)':'var(--neg)';
+  document.getElementById('healthCard').innerHTML = `
+    <div class="health-card">
+      <div class="health-ring">
+        <svg width="150" height="150">
+          <circle cx="75" cy="75" r="${r}" stroke="var(--paper-alt)" stroke-width="12" fill="none"/>
+          <circle cx="75" cy="75" r="${r}" stroke="${color}" stroke-width="12" fill="none" stroke-dasharray="${c}" stroke-dashoffset="${off}" stroke-linecap="round"/>
+        </svg>
+        <div class="score"><div class="n">${h.score}</div><div class="l">out of 100</div></div>
+      </div>
+      <div class="health-metrics">
+        <div class="hm-row"><span>Missing values</span><b>${h.missingPct.toFixed(1)}%</b></div>
+        <div class="hm-row"><span>Duplicate rows</span><b>${h.dupPct.toFixed(1)}%</b></div>
+        <div class="hm-row"><span>Date consistency</span><b>${h.dateCons.toFixed(1)}%</b></div>
+        <div class="hm-row"><span>Numeric consistency</span><b>${h.numCons.toFixed(1)}%</b></div>
+        <div class="hm-row"><span>Category consistency</span><b>${h.catCons.toFixed(1)}%</b></div>
+        <div class="hm-row" style="border-bottom:none;"><span>Formula</span><span style="font-family:var(--font-data); font-size:11px; color:var(--text-dim);">25% completeness + 20% uniqueness<br>+ 20% date validity + 20% numeric validity<br>+ 15% category consistency</span></div>
+      </div>
+    </div>`;
+}
+
+function renderColIntel(){
+  let rows = STATE.headers.map(h=>{
+    const col = STATE.columns[h];
+    const role = effectiveRole(h);
+    const conf = STATE.roleOverrides[h] ? 'high' : col.roleConfidence;
+    const opts = Object.keys(ROLE_LABELS).map(r=>`<option value="${r}" ${r===role?'selected':''}>${ROLE_LABELS[r]}</option>`).join('');
+    return `<tr>
+      <td><b>${esc(h)}</b></td>
+      <td><select class="role-select" onchange="AD.overrideRole('${esc(h).replace(/'/g,"\\'")}', this.value)">${opts}</select></td>
+      <td style="text-transform:capitalize;">${col.type}</td>
+      <td><span class="badge ${conf}">${conf}</span></td>
+      <td style="font-size:11.5px; color:var(--text-dim);">${col.sampleValues.map(esc).join(', ')}</td>
+    </tr>`;
+  }).join('');
+  document.getElementById('colIntelTbl').innerHTML = `
+    <thead><tr><th>Column</th><th>Detected meaning</th><th>Data type</th><th>Confidence</th><th>Sample values</th></tr></thead>
+    <tbody>${rows}</tbody>`;
+}
+function overrideRole(h, role){ STATE.roleOverrides[h] = role; detectIndustry(); initFilters(); renderIndustry(); renderColIntel(); }
+
+function renderIndustry(){
+  const ind = STATE.industry; const def = INDUSTRY_DEFS[ind.key];
+  document.getElementById('indIcon').textContent = def.icon;
+  document.getElementById('indName').textContent = def.label;
+  document.getElementById('indConfText').textContent = ind.confidence + '% confidence';
+  document.getElementById('indConfBar').style.width = ind.confidence + '%';
+  const colNames = ind.matchedCols && ind.matchedCols.length ? ind.matchedCols.join(', ') : 'general sales and category fields';
+  document.getElementById('indReason').textContent = ind.matchedCols && ind.matchedCols.length
+    ? `This dataset contains ${colNames}, which are typical of ${def.label.toLowerCase()} data.`
+    : `No strong industry-specific fields were detected, so a general business dashboard will be used.`;
+  const sel = document.getElementById('indChange');
+  sel.innerHTML = Object.keys(INDUSTRY_DEFS).map(k=>`<option value="${k}" ${k===ind.key?'selected':''}>${INDUSTRY_DEFS[k].label}</option>`).join('');
+}
+
+/* ---------- dashboard ---------- */
+function dashboardMetricCol(){
+  return primaryCol('sales') || STATE.headers.find(h=>STATE.columns[h].type==='numeric');
+}
+function dashboardCategoryCol(){
+  const pref = ['salesperson','distributor','region','product'];
+  for(const role of pref){ const c = primaryCol(role); if(c) return {col:c, role}; }
+  const cat = categoryCols()[0] || STATE.headers.find(h=>STATE.columns[h].type==='category');
+  return cat ? {col:cat, role:effectiveRole(cat)} : null;
+}
+function groupSum(rows, catCol, metricCol){
+  const map = {};
+  rows.forEach(r=>{
+    const k = String(r[catCol]).trim() || '(blank)';
+    const v = toNumber(r[metricCol]) || 0;
+    map[k] = (map[k]||0) + v;
+  });
+  return map;
+}
+
+function renderFiltersUI(){
+  const f = STATE.filters; let html = '';
+  if(f.dateCol){
+    const min = STATE.columns[f.dateCol].min, max = STATE.columns[f.dateCol].max;
+    const toInput = d => d ? new Date(d).toISOString().slice(0,10) : '';
+    html += `<div class="filter-f"><label>From</label><input type="date" value="${toInput(f.start)}" onchange="AD.setDateFilter('start', this.value)"></div>`;
+    html += `<div class="filter-f"><label>To</label><input type="date" value="${toInput(f.end)}" onchange="AD.setDateFilter('end', this.value)"></div>`;
+  }
+  categoryCols().slice(0,3).forEach(col=>{
+    const vals = STATE.columns[col].uniqueValues || [];
+    const current = f.cats[col] || '__all__';
+    const opts = `<option value="__all__">All</option>` + vals.slice(0,300).map(v=>`<option value="${esc(v)}" ${v===current?'selected':''}>${esc(v)}</option>`).join('');
+    html += `<div class="filter-f"><label>${esc(col)}</label><select onchange="AD.setCatFilter('${esc(col).replace(/'/g,"\\'")}', this.value)">${opts}</select></div>`;
+  });
+  html += `<div class="filter-f"><label>&nbsp;</label><button class="btn btn-sm" onclick="AD.resetFilters()">Reset</button></div>`;
+  document.getElementById('filtersRow').innerHTML = html;
+}
+function setDateFilter(which, val){ STATE.filters[which] = val ? new Date(val) : null; renderDashboard(); }
+function setCatFilter(col, val){ STATE.filters.cats[col] = val; renderDashboard(); }
+function resetFilters(){ initFilters(); renderFiltersUI(); renderDashboard(); }
+
+function buildKPIs(rows){
+  const metricCol = dashboardMetricCol();
+  const targetCol = primaryCol('target');
+  const qtyCol = primaryCol('quantity');
+  const dateCol = STATE.filters.dateCol;
+  const catInfo = dashboardCategoryCol();
+  const kpis = [];
+  if(metricCol){
+    const total = rows.reduce((a,r)=>a+(toNumber(r[metricCol])||0),0);
+    kpis.push({label:'Total '+metricCol, value:'₹'+fmtNum(total), raw:total,
+      formula:`SUM(${metricCol})`, calc:`Added ${metricCol} across ${rows.length.toLocaleString()} rows = ₹${fmtFull(total)}`});
+    if(targetCol){
+      const tgt = rows.reduce((a,r)=>a+(toNumber(r[targetCol])||0),0);
+      const ach = tgt ? (total/tgt*100) : null;
+      kpis.push({label:'Target', value:'₹'+fmtNum(tgt), raw:tgt, formula:`SUM(${targetCol})`, calc:`Added ${targetCol} across ${rows.length.toLocaleString()} rows = ₹${fmtFull(tgt)}`});
+      kpis.push({label:'Achievement', value: ach!==null ? ach.toFixed(1)+'%' : '—', raw:ach,
+        formula:`${metricCol} ÷ ${targetCol} × 100`, calc: ach!==null ? `₹${fmtFull(total)} ÷ ₹${fmtFull(tgt)} × 100 = ${ach.toFixed(1)}%` : 'Target is zero for this selection.'});
+    }
+    if(dateCol){
+      const sorted = rows.map(r=>({d:toDate(r[dateCol]), v:toNumber(r[metricCol])||0})).filter(x=>x.d).sort((a,b)=>a.d-b.d);
+      if(sorted.length>4){
+        const mid = Math.floor(sorted.length/2);
+        const first = sorted.slice(0,mid).reduce((a,x)=>a+x.v,0);
+        const second = sorted.slice(mid).reduce((a,x)=>a+x.v,0);
+        const growth = first ? ((second-first)/first*100) : null;
+        kpis.push({label:'Growth (1st half → 2nd half)', value: growth!==null ? (growth>=0?'+':'')+growth.toFixed(1)+'%' : '—', raw:growth,
+          delta: growth, formula:`(2nd-half ${metricCol} − 1st-half ${metricCol}) ÷ 1st-half × 100`,
+          calc: growth!==null ? `(₹${fmtFull(second)} − ₹${fmtFull(first)}) ÷ ₹${fmtFull(first)} × 100 = ${growth.toFixed(1)}%` : 'Not enough data to compute.'});
+      }
+    }
+  }
+  if(qtyCol && qtyCol !== metricCol){
+    const q = rows.reduce((a,r)=>a+(toNumber(r[qtyCol])||0),0);
+    kpis.push({label:'Total '+qtyCol, value:fmtNum(q), raw:q, formula:`SUM(${qtyCol})`, calc:`Added ${qtyCol} across ${rows.length.toLocaleString()} rows = ${fmtFull(q)}`});
+  }
+  if(catInfo){
+    const uniq = new Set(rows.map(r=>String(r[catInfo.col]).trim())).size;
+    kpis.push({label:'Active '+catInfo.col, value:fmtFull(uniq), raw:uniq, formula:`COUNT(DISTINCT ${catInfo.col})`, calc:`${uniq} distinct values of ${catInfo.col} appear in these ${rows.length.toLocaleString()} rows.`});
+  }
+  kpis.push({label:'Records', value:fmtFull(rows.length), raw:rows.length, formula:'COUNT(rows)', calc:`${rows.length.toLocaleString()} rows match the current filters.`});
+  return kpis;
+}
+
+function renderDashboard(){
+  const rows = getFilteredRows();
+  const metricCol = dashboardMetricCol();
+  const catInfo = dashboardCategoryCol();
+  const dateCol = STATE.filters.dateCol;
+  const def = INDUSTRY_DEFS[STATE.industry.key];
+
+  document.getElementById('dbTitle').textContent = def.label + ' performance';
+  document.getElementById('dbSubtitle').textContent = `${rows.length.toLocaleString()} of ${STATE.rows.length.toLocaleString()} rows · built from ${STATE.headers.length} columns`;
+
+  renderFiltersUI();
+  STATE.kpis = buildKPIs(rows);
+  document.getElementById('kpiRow').innerHTML = STATE.kpis.map((k,i)=>`
+    <div class="kpi">
+      <button class="explain-btn" onclick="AD.toggleExplain(${i})">Explain</button>
+      <div class="l">${esc(k.label)}</div>
+      <div class="v">${esc(k.value)}</div>
+      ${k.delta!==undefined ? `<div class="d ${k.delta>=0?'pos':'neg'}">${k.delta>=0?'▲':'▼'} vs first half</div>` : ''}
+      <div class="explain" id="exp${i}">${esc(k.formula)}<br>${esc(k.calc)}</div>
+    </div>`).join('');
+
+  // trend chart
+  if(dateCol && metricCol){
+    const map = {};
+    rows.forEach(r=>{
+      const d = toDate(r[dateCol]); if(!d) return;
+      const key = d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');
+      map[key] = (map[key]||0) + (toNumber(r[metricCol])||0);
+    });
+    const keys = Object.keys(map).sort();
+    drawChart('trendChart','line', keys, [{label:metricCol, data:keys.map(k=>map[k])}]);
+    document.getElementById('trendSub').textContent = `Monthly ${metricCol}, from ${dateCol}`;
+  } else {
+    drawChart('trendChart','line', [], []);
+    document.getElementById('trendSub').textContent = 'No date column detected to build a trend.';
+  }
+
+  // category chart
+  if(catInfo && metricCol){
+    const map = groupSum(rows, catInfo.col, metricCol);
+    const sorted = Object.entries(map).sort((a,b)=>b[1]-a[1]).slice(0,8);
+    drawChart('catChart','bar', sorted.map(x=>x[0]), [{label:metricCol, data:sorted.map(x=>x[1])}]);
+    document.getElementById('catSub').textContent = `Top ${sorted.length} ${catInfo.col} by ${metricCol}`;
+  } else {
+    drawChart('catChart','bar', [], []);
+    document.getElementById('catSub').textContent = 'No category column detected.';
+  }
+
+  // ranking table
+  if(catInfo && metricCol){
+    const map = groupSum(rows, catInfo.col, metricCol);
+    const targetCol = primaryCol('target');
+    const tmap = targetCol ? groupSum(rows, catInfo.col, targetCol) : null;
+    const sorted = Object.entries(map).sort((a,b)=>b[1]-a[1]).slice(0,15);
+    document.getElementById('rankTitle').textContent = `${catInfo.col} performance`;
+    const head = `<tr><th>${esc(catInfo.col)}</th><th>${esc(metricCol)}</th>${tmap?`<th>${esc(targetCol)}</th><th>Achievement</th>`:''}</tr>`;
+    const body = sorted.map(([k,v])=>{
+      const tgt = tmap ? (tmap[k]||0) : null;
+      const ach = tmap && tgt ? (v/tgt*100) : null;
+      return `<tr><td>${esc(k)}</td><td class="num">₹${fmtNum(v)}</td>${tmap?`<td class="num">₹${fmtNum(tgt)}</td><td class="num">${ach!==null?ach.toFixed(1)+'%':'—'}</td>`:''}</tr>`;
+    }).join('');
+    document.getElementById('rankTbl').innerHTML = `<thead>${head}</thead><tbody>${body}</tbody>`;
+  } else {
+    document.getElementById('rankTbl').innerHTML = '<tbody><tr><td style="color:var(--text-dim);">Not enough category data to build a ranking.</td></tr></tbody>';
+  }
+
+  renderInsights(rows, metricCol, catInfo, dateCol);
+}
+function toggleExplain(i){ document.getElementById('exp'+i).classList.toggle('on'); }
+
+function renderInsights(rows, metricCol, catInfo, dateCol){
+  const items = [];
+  if(metricCol && catInfo){
+    const map = groupSum(rows, catInfo.col, metricCol);
+    const sorted = Object.entries(map).sort((a,b)=>b[1]-a[1]);
+    if(sorted.length){
+      const [name, val] = sorted[0];
+      const total = sorted.reduce((a,x)=>a+x[1],0);
+      const share = total ? (val/total*100) : 0;
+      items.push({tag:'📌', txt:`${esc(name)} contributed ${share.toFixed(1)}% of total ${metricCol} — the highest of any ${catInfo.col}.`,
+        calc:`SUM(${metricCol}) WHERE ${catInfo.col} = "${name}" → ₹${fmtFull(val)}  |  Total ₹${fmtFull(total)}  |  ${val.toFixed ? '' : ''}Share = ₹${fmtFull(val)} ÷ ₹${fmtFull(total)} × 100 = ${share.toFixed(1)}%`});
+    }
+    const targetCol = primaryCol('target');
+    if(targetCol){
+      const tmap = groupSum(rows, catInfo.col, targetCol);
+      const below = Object.keys(map).filter(k => tmap[k] && (map[k]/tmap[k]*100) < 70);
+      if(below.length){
+        items.push({tag:'⚠️', txt:`${below.length} ${catInfo.col}${below.length===1?' is':'s are'} below 70% target achievement: ${below.slice(0,5).map(esc).join(', ')}${below.length>5?'…':''}.`,
+          calc:`Achievement = ${metricCol} ÷ ${targetCol} × 100, computed per ${catInfo.col}, filtered to < 70%.`});
+      }
+    }
+  }
+  if(metricCol && dateCol){
+    const map = {};
+    rows.forEach(r=>{ const d=toDate(r[dateCol]); if(!d) return; const key=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0'); map[key]=(map[key]||0)+(toNumber(r[metricCol])||0); });
+    const keys = Object.keys(map).sort();
+    if(keys.length>=2){
+      const prev = map[keys[keys.length-2]], cur = map[keys[keys.length-1]];
+      const chg = prev ? ((cur-prev)/prev*100) : null;
+      if(chg !== null && Math.abs(chg) >= 25){
+        items.push({tag:'🔔', txt:`${metricCol} in ${keys[keys.length-1]} was ${Math.abs(chg).toFixed(1)}% ${chg<0?'lower':'higher'} than ${keys[keys.length-2]}.`,
+          calc:`Previous: ₹${fmtFull(prev)}  Current: ₹${fmtFull(cur)}  Change: (${fmtFull(cur)}-${fmtFull(prev)}) ÷ ${fmtFull(prev)} × 100 = ${chg.toFixed(1)}%`});
+      }
+    }
+  }
+  const h = computeHealth();
+  if(h.missingPct > 5) items.push({tag:'🩺', txt:`${h.missingPct.toFixed(1)}% of cells in this dataset are missing — some KPIs may undercount.`, calc:`Missing cells ÷ total cells × 100, counted across all ${STATE.headers.length} columns.`});
+  if(!items.length) items.push({tag:'ℹ️', txt:'No notable patterns were found in the current selection.', calc:''});
+  document.getElementById('insightsBox').innerHTML = items.map((it,i)=>`
+    <div class="insight">
+      <div class="tag">${it.tag}</div>
+      <div><div class="txt">${it.txt}</div>${it.calc?`<button class="vcalc" onclick="AD.toggleCalc(${i})">View calculation</button><div class="calc" id="icalc${i}">${esc(it.calc)}</div>`:''}</div>
+    </div>`).join('');
+}
+function toggleCalc(i){ document.getElementById('icalc'+i).classList.toggle('on'); }
+
+function drawChart(canvasId, type, labels, datasets){
+  const ctx = document.getElementById(canvasId);
+  if(STATE.charts[canvasId]) STATE.charts[canvasId].destroy();
+  const styleInk = getComputedStyle(document.documentElement).getPropertyValue('--ink').trim();
+  const accent = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim();
+  const line = getComputedStyle(document.documentElement).getPropertyValue('--line').trim();
+  if(!labels.length){ STATE.charts[canvasId] = null; const c = ctx.getContext('2d'); c.clearRect(0,0,ctx.width,ctx.height); return; }
+  STATE.charts[canvasId] = new Chart(ctx, {
+    type,
+    data:{ labels, datasets: datasets.map(d=>({label:d.label, data:d.data,
+      borderColor:accent, backgroundColor: type==='line' ? accent+'33' : accent, borderWidth:2, tension:.35, fill: type==='line', borderRadius:4})) },
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      plugins:{ legend:{display:false}, tooltip:{titleFont:{family:'Inter'}, bodyFont:{family:'IBM Plex Mono'}} },
+      scales:{
+        x:{ ticks:{color:styleInk, font:{size:11}}, grid:{color:line} },
+        y:{ ticks:{color:styleInk, font:{size:11}, callback:v=>fmtNum(v)}, grid:{color:line} }
+      }
+    }
+  });
+}
+
+/* ---------- Ask Your Data engine ---------- */
+function pushChat(role, html){
+  const log = document.getElementById('chatLog');
+  const div = document.createElement('div');
+  div.className = 'chat-msg ' + role;
+  div.innerHTML = html;
+  log.appendChild(div);
+  log.scrollTop = log.scrollHeight;
+}
+function findMetricCol(ql){
+  const numCols = STATE.headers.filter(h=>STATE.columns[h].type==='numeric');
+  for(const h of numCols){ if(ql.includes(norm(h))) return h; }
+  for(const role of ['sales','target','quantity','cost','price']){
+    for(const syn of ROLE_SYNONYMS[role]){ if(ql.includes(syn)){ const c = primaryCol(role); if(c) return c; } }
+  }
+  return dashboardMetricCol();
+}
+function findCategoryColFromQuestion(ql){
+  for(const role of ['region','product','salesperson','distributor']){
+    for(const syn of ROLE_SYNONYMS[role]){
+      if(ql.includes(syn)){ const c = primaryCol(role); if(c) return c; }
+    }
+  }
+  // try matching a specific value
+  for(const col of categoryCols()){
+    const vals = STATE.columns[col].uniqueValues || [];
+    for(const v of vals){ if(v && ql.includes(norm(v))) return col; }
+  }
+  return null;
+}
+function findValueMatch(ql){
+  for(const col of categoryCols()){
+    const vals = STATE.columns[col].uniqueValues || [];
+    for(const v of vals){
+      const nv = norm(v);
+      if(nv.length>1 && new RegExp('\\b'+nv.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'\\b').test(ql)) return {col, val:v};
+    }
+  }
+  return null;
+}
+function answerQuestion(q){
+  const ql = norm(q);
+  const metricCol = findMetricCol(ql);
+  if(!metricCol){
+    return {text:`I can't find a numeric column in this dataset that matches what you're asking about. Available numeric fields: ${STATE.headers.filter(h=>STATE.columns[h].type==='numeric').join(', ') || 'none'}.`, calc:null};
+  }
+  const rows = getFilteredRows();
+
+  // top N
+  let m = ql.match(/top\s+(\d+)/);
+  if(m){
+    const n = parseInt(m[1],10);
+    const catCol = findCategoryColFromQuestion(ql) || (dashboardCategoryCol()||{}).col;
+    if(!catCol) return {text:`I can see ${metricCol}, but there's no category column to rank by.`, calc:null};
+    const map = groupSum(rows, catCol, metricCol);
+    const sorted = Object.entries(map).sort((a,b)=>b[1]-a[1]).slice(0,n);
+    const list = sorted.map((x,i)=>`${i+1}. ${x[0]} — ₹${fmtFull(x[1])}`).join('<br>');
+    return {text:`Top ${sorted.length} ${catCol} by ${metricCol}:<br>${list}`,
+      calc:`GROUP BY ${catCol}, SUM(${metricCol}), ORDER BY total DESC, LIMIT ${n}`, rowsUsed: rows.length};
+  }
+
+  // highest / lowest by category
+  if(/highest|most|maximum|best|top\b/.test(ql) && /which|what/.test(ql)){
+    const catCol = findCategoryColFromQuestion(ql) || (dashboardCategoryCol()||{}).col;
+    if(!catCol) return {text:`I can see ${metricCol}, but there's no category column to compare by.`, calc:null};
+    const map = groupSum(rows, catCol, metricCol);
+    const sorted = Object.entries(map).sort((a,b)=>b[1]-a[1]);
+    if(!sorted.length) return {text:'No matching rows for that question.', calc:null};
+    const [name, val] = sorted[0];
+    return {text:`${esc(name)} — ₹${fmtFull(val)}`, calc:`SUM(${metricCol}) grouped by ${catCol}, highest value selected.`, rowsUsed: rows.length};
+  }
+  if(/lowest|least|minimum|worst/.test(ql) && /which|what/.test(ql)){
+    const catCol = findCategoryColFromQuestion(ql) || (dashboardCategoryCol()||{}).col;
+    if(!catCol) return {text:`I can see ${metricCol}, but there's no category column to compare by.`, calc:null};
+    const map = groupSum(rows, catCol, metricCol);
+    const sorted = Object.entries(map).sort((a,b)=>a[1]-b[1]);
+    if(!sorted.length) return {text:'No matching rows for that question.', calc:null};
+    const [name, val] = sorted[0];
+    return {text:`${esc(name)} — ₹${fmtFull(val)}`, calc:`SUM(${metricCol}) grouped by ${catCol}, lowest value selected.`, rowsUsed: rows.length};
+  }
+
+  // compare A vs B
+  m = ql.match(/compare\s+(.+?)\s+(?:vs\.?|versus|and)\s+(.+)/);
+  if(m){
+    const catCol = findCategoryColFromQuestion(ql) || categoryCols()[0];
+    if(!catCol) return {text:`I don't have a category column to compare on.`, calc:null};
+    const map = groupSum(rows, catCol, metricCol);
+    const names = Object.keys(map);
+    const find = (t)=> names.find(n=> norm(t).includes(norm(n)) || norm(n).includes(norm(t.trim())));
+    const a = find(m[1]), b = find(m[2]);
+    if(!a || !b) return {text:`I couldn't match both values to a ${catCol}. Available values include: ${names.slice(0,8).join(', ')}.`, calc:null};
+    return {text:`${a}: ₹${fmtFull(map[a])}<br>${b}: ₹${fmtFull(map[b])}`, calc:`SUM(${metricCol}) WHERE ${catCol} = "${a}" and "${b}"`, rowsUsed: rows.length};
+  }
+
+  // growth / change
+  if(/growth|change|trend/.test(ql)){
+    const dateCol = primaryCol('date');
+    if(!dateCol) return {text:`This dataset has no date column, so I can't calculate growth.`, calc:null};
+    const sorted = rows.map(r=>({d:toDate(r[dateCol]), v:toNumber(r[metricCol])||0})).filter(x=>x.d).sort((a,b)=>a.d-b.d);
+    if(sorted.length<4) return {text:`Not enough dated rows to calculate growth.`, calc:null};
+    const mid = Math.floor(sorted.length/2);
+    const first = sorted.slice(0,mid).reduce((a,x)=>a+x.v,0);
+    const second = sorted.slice(mid).reduce((a,x)=>a+x.v,0);
+    const growth = first ? ((second-first)/first*100) : null;
+    return {text: growth!==null ? `${growth>=0?'+':''}${growth.toFixed(1)}%` : 'Could not calculate — first-half total is zero.',
+      calc:`(2nd-half ${metricCol} − 1st-half ${metricCol}) ÷ 1st-half × 100 = (₹${fmtFull(second)}-₹${fmtFull(first)}) ÷ ₹${fmtFull(first)} × 100`, rowsUsed: rows.length};
+  }
+
+  // average
+  if(/average|avg|mean/.test(ql)){
+    const vm = findValueMatch(ql);
+    let use = rows; let scope = `across all ${rows.length.toLocaleString()} rows`;
+    if(vm){ use = rows.filter(r=>String(r[vm.col]).trim()===vm.val); scope = `where ${vm.col} = "${vm.val}" (${use.length.toLocaleString()} rows)`; }
+    const vals = use.map(r=>toNumber(r[metricCol])).filter(v=>v!==null);
+    const avg = vals.length ? vals.reduce((a,b)=>a+b,0)/vals.length : null;
+    return {text: avg!==null ? '₹'+fmtFull(avg) : 'No valid values found.', calc:`AVERAGE(${metricCol}) ${scope}`, rowsUsed: use.length};
+  }
+
+  // default: total / sum, possibly filtered by a mentioned value
+  const vm = findValueMatch(ql);
+  let use = rows; let scope = `across all ${rows.length.toLocaleString()} rows`;
+  if(vm){ use = rows.filter(r=>String(r[vm.col]).trim()===vm.val); scope = `where ${vm.col} = "${vm.val}" (${use.length.toLocaleString()} rows)`; }
+  const total = use.reduce((a,r)=>a+(toNumber(r[metricCol])||0),0);
+  return {text:'₹'+fmtFull(total), calc:`SUM(${metricCol}) ${scope}`, rowsUsed: use.length};
+}
+function askSubmit(){
+  const input = document.getElementById('chatInput');
+  const q = input.value.trim(); if(!q) return;
+  pushChat('user', esc(q));
+  input.value = '';
+  setTimeout(()=>{
+    const res = answerQuestion(q);
+    let html = `<div class="ans">${res.text}</div>`;
+    if(res.calc) html += `<div class="calc-box">Calculation: ${esc(res.calc)}${res.rowsUsed!==undefined?`<br>Rows used: ${res.rowsUsed.toLocaleString()}`:''}</div>`;
+    pushChat('bot', html);
+  }, 150);
+}
+function renderAskSuggestions(){
+  const metricCol = dashboardMetricCol();
+  const catInfo = dashboardCategoryCol();
+  const sugg = [];
+  if(metricCol) sugg.push(`What is the total ${metricCol}?`);
+  if(metricCol && catInfo) sugg.push(`Which ${catInfo.col} has the highest ${metricCol}?`);
+  if(metricCol && catInfo) sugg.push(`Top 5 ${catInfo.col} by ${metricCol}`);
+  if(metricCol) sugg.push(`What is the average ${metricCol}?`);
+  if(metricCol && STATE.filters.dateCol) sugg.push(`What is the growth in ${metricCol}?`);
+  document.getElementById('chatSuggest').innerHTML = sugg.map(s=>`<button class="chip-sug" onclick="document.getElementById('chatInput').value='${esc(s).replace(/'/g,"\\'")}'; AD.askSubmit();">${esc(s)}</button>`).join('');
+  if(!document.getElementById('chatLog').childElementCount){
+    pushChat('bot', `<div class="ans" style="font-size:14px;">Ask me anything about your data.</div>Answers are calculated directly from your rows — try one of the suggestions below, or type your own question.`);
+  }
+}
+
+/* ---------- explorer ---------- */
+function explorerRender(){
+  const search = norm(document.getElementById('explorerSearch').value);
+  let rows = STATE.rows;
+  if(search) rows = rows.filter(r => STATE.headers.some(h => norm(r[h]).includes(search)));
+  if(STATE.explorerSort){
+    const {col, dir} = STATE.explorerSort;
+    rows = rows.slice().sort((a,b)=>{
+      const av = toNumber(a[col]), bv = toNumber(b[col]);
+      let cmp;
+      if(av!==null && bv!==null) cmp = av-bv; else cmp = String(a[col]).localeCompare(String(b[col]));
+      return dir==='asc'?cmp:-cmp;
+    });
+  }
+  const pageSize = 25;
+  const maxPage = Math.max(0, Math.ceil(rows.length/pageSize)-1);
+  STATE.explorerPage = Math.min(STATE.explorerPage, maxPage);
+  const slice = rows.slice(STATE.explorerPage*pageSize, STATE.explorerPage*pageSize+pageSize);
+  const head = '<tr>' + STATE.headers.map(h=>{
+    const sortIcon = STATE.explorerSort && STATE.explorerSort.col===h ? (STATE.explorerSort.dir==='asc'?' ▲':' ▼') : '';
+    return `<th class="sortable" onclick="AD.explorerSortBy('${esc(h).replace(/'/g,"\\'")}')">${esc(h)}${sortIcon}</th>`;
+  }).join('') + '</tr>';
+  const body = slice.map(r=>'<tr>'+STATE.headers.map(h=>`<td>${esc(String(r[h]!==undefined?r[h]:''))}</td>`).join('')+'</tr>').join('');
+  document.getElementById('explorerTbl').innerHTML = `<thead>${head}</thead><tbody>${body}</tbody>`;
+  document.getElementById('explorerCount').textContent = `${rows.length.toLocaleString()} matching rows`;
+  document.getElementById('pagerLabel').textContent = `Page ${STATE.explorerPage+1} of ${maxPage+1}`;
+}
+function explorerSortBy(col){
+  if(STATE.explorerSort && STATE.explorerSort.col===col) STATE.explorerSort.dir = STATE.explorerSort.dir==='asc'?'desc':'asc';
+  else STATE.explorerSort = {col, dir:'desc'};
+  explorerRender();
+}
+function explorerPage(delta){ STATE.explorerPage = Math.max(0, STATE.explorerPage+delta); explorerRender(); }
+
+function renderProfile(){
+  const rows = STATE.headers.map(h=>{
+    const c = STATE.columns[h];
+    let stat = '—';
+    if(c.type==='numeric') stat = `min ${fmtNum(c.min)} · max ${fmtNum(c.max)} · avg ${fmtNum(c.avg)}`;
+    else if(c.type==='date') stat = c.min && c.max ? `${c.min.toISOString().slice(0,10)} → ${c.max.toISOString().slice(0,10)}` : '—';
+    else stat = `${c.unique} unique values`;
+    return `<tr><td><b>${esc(h)}</b></td><td style="text-transform:capitalize;">${c.type}</td><td class="num">${(100-c.missingPct).toFixed(1)}%</td><td class="num">${c.unique}</td><td style="font-family:var(--font-data); font-size:12px;">${stat}</td></tr>`;
+  }).join('');
+  document.getElementById('profileTbl').innerHTML = `<thead><tr><th>Column</th><th>Type</th><th>Non-null %</th><th>Unique values</th><th>Statistics</th></tr></thead><tbody>${rows}</tbody>`;
+}
+
+/* ---------- export ---------- */
+async function getDownloads(){
+  try{ return await claude.use('downloads'); }catch(e){ return null; }
+}
+async function saveFile(filename, data){
+  const dl = await getDownloads();
+  if(!dl){ alert('Downloads are not available in this view.'); return false; }
+  try{ await dl.save({filename, data}); return true; }
+  catch(e){ console.error(e); return false; }
+}
+function rowsToCSV(rows){
+  const head = STATE.headers.map(h=>'"'+String(h).replace(/"/g,'""')+'"').join(',');
+  const body = rows.map(r=>STATE.headers.map(h=>'"'+String(r[h]!==undefined?r[h]:'').replace(/"/g,'""')+'"').join(',')).join('\n');
+  return head+'\n'+body;
+}
+async function exportCSV(filteredOnly){
+  const statusEl = document.getElementById(filteredOnly?'statusCsvFiltered':'statusCsvFull');
+  statusEl.textContent = 'Preparing...'; statusEl.className='export-status';
+  const rows = filteredOnly ? getFilteredRows() : STATE.rows;
+  const csv = rowsToCSV(rows);
+  const ok = await saveFile(`autodash_${filteredOnly?'filtered':'full'}.csv`, new Blob([csv], {type:'text/csv'}));
+  statusEl.textContent = ok ? `Saved ${rows.length.toLocaleString()} rows.` : 'Save was cancelled or unavailable.';
+  statusEl.className = 'export-status ' + (ok?'ok':'err');
+}
+async function exportExcel(){
+  const statusEl = document.getElementById('statusExcel');
+  if(typeof XLSX === 'undefined'){ statusEl.textContent='Excel engine unavailable.'; statusEl.className='export-status err'; return; }
+  statusEl.textContent = 'Building workbook...'; statusEl.className='export-status';
+  const wb = XLSX.utils.book_new();
+  const kpiRows = STATE.kpis.map(k=>({Metric:k.label, Value:k.value, Formula:k.formula, Calculation:k.calc}));
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(kpiRows), 'Dashboard');
+  const cleaned = getFilteredRows();
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(cleaned), 'Cleaned Data');
+  const profileRows = STATE.headers.map(h=>{
+    const c = STATE.columns[h];
+    return {Column:h, Type:c.type, 'Non-null %': (100-c.missingPct).toFixed(1), Unique: c.unique,
+      Min: c.min!==undefined? (c.min instanceof Date? c.min.toISOString().slice(0,10): c.min) : '',
+      Max: c.max!==undefined? (c.max instanceof Date? c.max.toISOString().slice(0,10): c.max) : '',
+      Avg: c.avg!==undefined ? Math.round(c.avg*100)/100 : ''};
+  });
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(profileRows), 'Data Profile');
+  const h = computeHealth();
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet([
+    {Metric:'Health score', Value:h.score}, {Metric:'Missing values %', Value:h.missingPct.toFixed(1)},
+    {Metric:'Duplicate rows %', Value:h.dupPct.toFixed(1)}, {Metric:'Date consistency %', Value:h.dateCons.toFixed(1)},
+    {Metric:'Numeric consistency %', Value:h.numCons.toFixed(1)}, {Metric:'Category consistency %', Value:h.catCons.toFixed(1)}
+  ]), 'Data Quality');
+  const wbout = XLSX.write(wb, {bookType:'xlsx', type:'array'});
+  const ok = await saveFile('autodash_dashboard.xlsx', new Blob([wbout], {type:'application/octet-stream'}));
+  statusEl.textContent = ok ? 'Workbook saved.' : 'Save was cancelled or unavailable.';
+  statusEl.className = 'export-status ' + (ok?'ok':'err');
+}
+async function exportChartPNG(canvasId){
+  const chart = STATE.charts[canvasId];
+  if(!chart){ alert('Nothing to export for this chart yet.'); return; }
+  const dataUrl = chart.toBase64Image();
+  const res = await fetch(dataUrl); const blob = await res.blob();
+  await saveFile(canvasId+'.png', blob);
+}
+
+/* ---------- navigation ---------- */
+const doneSteps = new Set();
+function markStepDone(s){ doneSteps.add(s); renderStepsRail(); }
+function renderStepsRail(){
+  document.getElementById('stepsRail').innerHTML = STEPS.map((s,i)=>`
+    <div class="step-pill ${s===currentStep?'active':''} ${doneSteps.has(s)?'done':''}" onclick="AD.goStep('${s}')">
+      <div class="d">${doneSteps.has(s)&&s!==currentStep?'✓':i+1}</div>${STEP_LABELS[s]}
+    </div>`).join('');
+  document.getElementById('sideNav').innerHTML = STEPS.map(s=>`<a href="#" class="${s===currentStep?'active':''}" onclick="event.preventDefault(); AD.goStep('${s}')">${STEP_LABELS[s]}</a>`).join('');
+}
+function goStep(step){
+  if(step !== 'upload' && !STATE.rows.length){ return; }
+  currentStep = step;
+  document.querySelectorAll('.panel').forEach(p=>p.classList.toggle('on', p.dataset.panel===step));
+  renderStepsRail();
+  if(step==='dashboard'){ markStepDone('inspect'); markStepDone('industry'); renderDashboard(); }
+  if(step==='ask'){ markStepDone('dashboard'); renderAskSuggestions(); }
+  if(step==='explore'){ markStepDone('ask'); explorerRender(); renderProfile(); }
+  if(step==='export'){ markStepDone('explore'); }
+  if(step==='inspect'){ markStepDone('upload'); }
+  window.scrollTo({top:0, behavior:'smooth'});
+}
+
+/* ---------- demo data ---------- */
+function loadDemo(){
+  const regions = ['Delhi','Haryana','Punjab','Uttarakhand'];
+  const asms = ['Rahul Sharma','Priya Verma','Amit Nair','Sana Khan','Vikram Rao'];
+  const skus = ['Water 1L','Water 500ml','Water 20L Jar','Soda Lime','Energy Drink 250ml'];
+  const dist = ['North Traders','City Beverages','Metro Agency','Sunrise Distributors'];
+  const headers = ['Bill Date','Region','ASM','Distributor','SKU','Qty','Ach','Tgt'];
+  const rows = [];
+  let d = new Date(2026,3,1);
+  for(let i=0;i<1400;i++){
+    const day = new Date(2026,3,1); day.setDate(day.getDate() + Math.floor(i/8));
+    const region = regions[i%regions.length];
+    const asm = asms[(i+region.length)%asms.length];
+    const sku = skus[i%skus.length];
+    const qty = Math.round(50+Math.random()*450);
+    const rate = 18+Math.random()*12;
+    const ach = Math.round(qty*rate);
+    const tgt = Math.round(ach*(0.8+Math.random()*0.45));
+    rows.push({'Bill Date':day.toISOString().slice(0,10), Region:region, ASM:asm, Distributor:dist[i%dist.length], SKU:sku, Qty:qty, Ach:ach, Tgt:tgt});
+  }
+  STATE.demo = true;
+  onParsed({name:'Demo_FMCG_Sales.csv', size: 48000}, headers, rows, 1);
+}
+
+/* ---------- misc ui wiring ---------- */
+function launchApp(demo){
+  document.getElementById('landing').classList.add('off');
+  document.getElementById('appview').classList.add('on');
+  window.scrollTo({top:0});
+  if(demo && !STATE.rows.length){ loadDemo(); }
+  renderStepsRail();
+  goStep('upload');
+}
+function animateHero(){
+  const steps = document.querySelectorAll('#heroFlow .flow-step');
+  let i = 0;
+  function tick(){ steps.forEach((s,idx)=>s.classList.toggle('on', idx<=i)); i = (i+1) % (steps.length+1); if(i===0) steps.forEach(s=>s.classList.remove('on')); }
+  tick(); setInterval(tick, 1100);
+}
+
+document.addEventListener('DOMContentLoaded', function(){
+  animateHero();
+  const dz = document.getElementById('dropZone');
+  const fi = document.getElementById('fileInput');
+  dz.addEventListener('click', ()=>fi.click());
+  dz.addEventListener('dragover', e=>{ e.preventDefault(); dz.classList.add('drag'); });
+  dz.addEventListener('dragleave', ()=> dz.classList.remove('drag'));
+  dz.addEventListener('drop', e=>{ e.preventDefault(); dz.classList.remove('drag'); if(e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]); });
+  fi.addEventListener('change', e=>{ if(e.target.files[0]) handleFile(e.target.files[0]); });
+
+  document.getElementById('themeSwitch').addEventListener('click', e=>{
+    const btn = e.target.closest('button'); if(!btn) return;
+    document.querySelectorAll('.theme-switch button').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    const t = btn.dataset.theme;
+    if(t==='light') document.documentElement.removeAttribute('data-theme');
+    else document.documentElement.setAttribute('data-theme', t);
+  });
+});
+
+return {launchApp, goStep, overrideRole, changeIndustry, setDateFilter, setCatFilter, resetFilters,
+  toggleExplain, toggleCalc, askSubmit, explorerRender, explorerSortBy, explorerPage,
+  exportCSV, exportExcel, exportChartPNG};
+})();
+</script>
+</body>
+</html>
