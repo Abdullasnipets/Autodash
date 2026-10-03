@@ -122,19 +122,15 @@ Multi-page dashboard support
 
 Theme customization and exportable reports (PDF)
 
-## 🛠 Tech Stack
-- Python
-- Pandas
-- Plotly
-- Streamlit
+some screenshots 👇👇👇
 
-## ▶️ How to Install & Run
-
-### 1️⃣ Install Requirements
-
-pip install streamlit pandas plotly scikit-learn numpy matplotlib seaborn
-
-streamlit run autodash.py (Put this into your CMD/Command Prompt)
+<img width="1920" height="1080" alt="Screenshot (17)" src="https://github.com/user-attachments/assets/306b0d1a-2a84-492a-aa85-4ef3d926dec9" />
+<img width="1920" height="1080" alt="Screenshot (16)" src="https://github.com/user-attachments/assets/888082d8-4c6b-42bf-82d0-3c6408234bc7" />
+<img width="1920" height="1080" alt="Screenshot (15)" src="https://github.com/user-attachments/assets/96bd7d35-f59f-4c79-b3e3-b98ce27fbe50" />
+<img width="1920" height="1080" alt="Screenshot (14)" src="https://github.com/user-attachments/assets/11114517-ae12-4615-a2c6-669f21a9963d" />
+<img width="1920" height="1080" alt="Screenshot (13)" src="https://github.com/user-attachments/assets/a0c5c6cf-5a23-4e65-8654-efc408a4e776" />
+<img width="1920" height="1080" alt="Screenshot (12)" src="https://github.com/user-attachments/assets/6e4e4f48-5f3c-4a6a-8695-1244dd1b7caf" />
+<img width="1920" height="1080" alt="Screenshot (18)" src="https://github.com/user-attachments/assets/308e0aee-81f2-4a41-a13d-096d98b9fa83" />
 
 
 
