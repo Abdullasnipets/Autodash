@@ -6,8 +6,6 @@ AutoDash AI is a single-file, browser-based business intelligence tool. Upload a
 
 No backend. No database. No API keys. Your file never leaves the browser tab.
 
-Live demo →
-
 Why
 
 Most people with a sales or operations spreadsheet don't know Power BI, Tableau, pivot tables, or SQL — and don't want to learn them to answer a simple question like "which region is behind target this month?" AutoDash AI reads the file, figures out what the columns mean, and builds the dashboard a business user would have built by hand — automatically, and without ever making up a number.
@@ -79,10 +77,6 @@ A drag/resize dashboard editor (themes are switchable instead)
 An actual LLM for "Ask Your Data" — it's a rule-based pattern matcher by design, which is what keeps every answer traceable to a real calculation
 
 These would be natural next steps for a production version (e.g. a FastAPI + Postgres backend for storage/sharing, and an LLM layer constrained to column-mapping and phrasing rather than arithmetic).
-
-License
-
-MIT — see LICENSE.
 
 Acknowledgements
 
